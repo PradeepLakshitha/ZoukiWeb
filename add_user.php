@@ -9,6 +9,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $username = trim($_POST['username']);
     $password = trim($_POST['password']);
     $status = trim($_POST['status']);
+    $uType = trim($_POST['uType']); // Capture user type
 
     // Validate Email Format
     if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
@@ -36,10 +37,10 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $hashed_password = password_hash($password, PASSWORD_BCRYPT);
 
     // Insert Data Using Prepared Statement
-    $sql = "INSERT INTO z_user (first_name, last_name, contact_number, email, username, password, status)
-            VALUES (?, ?, ?, ?, ?, ?, ?)";
+    $sql = "INSERT INTO z_user (first_name, last_name, contact_number, email, username, password, status, uType)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
     $stmt = $conn->prepare($sql);
-    $stmt->bind_param("sssssss", $first_name, $last_name, $contact_number, $email, $username, $hashed_password, $status);
+    $stmt->bind_param("ssssssss", $first_name, $last_name, $contact_number, $email, $username, $hashed_password, $status, $uType);
 
     if ($stmt->execute()) {
         echo "<script>
@@ -109,6 +110,14 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             <select name="status" class="form-control" required>
                 <option value="active">Active</option>
                 <option value="inactive">Inactive</option>
+            </select>
+        </div>
+        <div class="mb-3">
+            <label class="form-label">User Type</label>
+            <select name="uType" class="form-control" required>
+                <option value="Admin">Admin</option>
+                <option value="Manager">Manager</option>
+                <option value="User">User</option>
             </select>
         </div>
         <button type="submit" class="btn btn-primary w-100">Add User</button>

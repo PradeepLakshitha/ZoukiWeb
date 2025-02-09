@@ -30,7 +30,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         $stmt->execute();
 
         // Local Reset Link (For Testing)
-        $reset_link = "http://localhost/zouki_web/reset_password.php?token=$token";
+        $reset_link = "http://localhost/ZoukiWeb/reset_password.php?token=$token";
 
         // Send Email via PHPMailer
         $mail = new PHPMailer(true);
