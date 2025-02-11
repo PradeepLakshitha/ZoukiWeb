@@ -19,6 +19,9 @@ if (isset($_POST['logout'])) {
 }
 ?>
 
+
+
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -159,9 +162,35 @@ if (isset($_POST['logout'])) {
     </div>
     <div class="user-options">
         <span>Welcome, <?php echo htmlspecialchars($user_name); ?></span>
+
+
         <form method="post">
             <button type="submit" name="logout" class="btn btn-logout">Sign Out</button>
         </form>
+        <!-- Settings Icon -->
+<!--        <div style="padding-left: 20px">-->
+<!--            <img src="img/settings.svg" alt="Settings">-->
+<!--        </div>-->
+        <?php if (isset($_SESSION['uType']) && ($_SESSION['uType'] === 'Admin' || $_SESSION['uType'] === 'Manager')): ?>
+            <a href="dashboard.php">
+                <img src="img/settings.svg" alt="Settings">
+            </a>
+        <?php else: ?>
+            <a href="#" onclick="showNoAccessPopup();">
+                <img src="img/settings.svg" alt="Settings">
+            </a>
+        <?php endif; ?>
+
+        <script>
+            function showNoAccessPopup() {
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Access Denied',
+                    text: "You don't have permission to access the dashboard.",
+                });
+            }
+        </script>
+
     </div>
 </header>
 

@@ -9,7 +9,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $password = trim($_POST['password']); // Get raw password from form
     $remember = isset($_POST['remember']);
 
-    $sql = "SELECT * FROM z_user WHERE username = ? AND status = 'active'";
+    $sql = "SELECT userID, username, password, uType FROM z_user WHERE username = ? AND status = 'active'";
     $stmt = $conn->prepare($sql);
     $stmt->bind_param("s", $username);
     $stmt->execute();
@@ -24,7 +24,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             session_regenerate_id(true);
 
             $_SESSION['userID'] = $row['userID'];
-            $_SESSION['username'] = $row['username']; // Ensure consistency in session variable
+            $_SESSION['username'] = $row['username'];
+            $_SESSION['uType'] = $row['uType']; // Store user type in session
 
             // Securely Unset password variables
             unset($_POST['password']);
@@ -33,6 +34,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             // Set a Remember Me cookie **ONLY IF LOGIN IS SUCCESSFUL**
             if ($remember) {
                 setcookie("username", $username, time() + (86400 * 30), "/", "", true, true); // HttpOnly and Secure
+                setcookie("uType", $row['uType'], time() + (86400 * 30), "/", "", true, true); // Store uType in cookie
             }
 
             echo json_encode(["status" => "success", "message" => "Login successful!"]);

@@ -5,10 +5,12 @@ include 'db_connection.php';
 // Auto-login using Remember Me cookie
 if (isset($_COOKIE['username']) && !isset($_SESSION['username'])) {
     $_SESSION['username'] = $_COOKIE['username'];
+    $_SESSION['uType'] = $_COOKIE['uType']; // Restore user type
     header("Location: home.php");
     exit();
 }
 ?>
+
 
 <!DOCTYPE html>
 <html lang="en">
