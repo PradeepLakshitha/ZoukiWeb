@@ -1,22 +1,17 @@
 <?php
-session_start();
-
-// Redirect to login page if not logged in
-if (!isset($_SESSION['username'])) {
-    header("Location: index.php");
-    exit();
-}
+require_once 'session_check.php';
+check_session(); // All authenticated users can access home
 
 // Get logged-in username
 $user_name = $_SESSION['username'];
 
-// Handle logout
-if (isset($_POST['logout'])) {
-    session_destroy();
-    setcookie("username", "", time() - 3600, "/"); // Clear remember me cookie
-    header("Location: index.php");
-    exit();
-}
+// Remove this redundant logout logic
+// if (isset($_POST['logout'])) {
+//     session_destroy();
+//     setcookie("username", "", time() - 3600, "/"); // Clear remember me cookie
+//     header("Location: index.php");
+//     exit();
+// }
 ?>
 
 
@@ -164,8 +159,8 @@ if (isset($_POST['logout'])) {
         <span>Welcome, <?php echo htmlspecialchars($user_name); ?></span>
 
 
-        <form method="post">
-            <button type="submit" name="logout" class="btn btn-logout">Sign Out</button>
+        <form method="post" action="logout.php">
+            <button type="submit" class="btn btn-logout">Sign Out</button>
         </form>
         <!-- Settings Icon -->
 <!--        <div style="padding-left: 20px">-->

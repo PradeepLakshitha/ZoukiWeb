@@ -1,5 +1,6 @@
 <?php
-session_start();
+require_once 'session_check.php';
+check_session(['Admin', 'Manager']);
 include 'db_connection.php';
 
 // Redirect to login if not logged in
@@ -110,7 +111,7 @@ $userName = $_SESSION['username'];
             <div id="collapsePages" class="collapse" aria-labelledby="headingPages" data-parent="#accordionSidebar">
                 <div class="bg-white py-2 collapse-inner rounded">
                     <h6 class="collapse-header">Product Management</h6>
-                    <a class="collapse-item" href="product.php">Product Profile</a>
+                    <a class="collapse-item" href="products_management.php">Product Profile</a>
                     <a class="collapse-item" href="register.html">Disable Products</a>
                     <div class="collapse-divider"></div>
                     <h6 class="collapse-header">Product Import</h6>
@@ -712,7 +713,7 @@ $userName = $_SESSION['username'];
             <div class="modal-body">Select "Logout" below if you are ready to end your current session.</div>
             <div class="modal-footer">
                 <button class="btn btn-secondary" type="button" data-dismiss="modal">Cancel</button>
-                <a class="btn btn-primary" href="login.html">Logout</a>
+                <a class="btn btn-primary" href="logout.php">Logout</a>
             </div>
         </div>
     </div>

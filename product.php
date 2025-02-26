@@ -1,5 +1,6 @@
 <?php
-session_start();
+require_once 'session_check.php';
+check_session(['Admin', 'Manager']);
 include 'db_connection.php';
 
 // Ensure only Admin & Manager can access
@@ -77,7 +78,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 }
 
                 $_SESSION['success'] = "Product successfully added!";
-                header("Location: " . $_SERVER['PHP_SELF']);
+
+                header("Location: products_management.php");
                 exit();
             }
         }
@@ -534,13 +536,13 @@ $total_products = $conn->query("SELECT COUNT(*) as total FROM products")->fetch_
             </a>
         </li>
         <li class="nav-item">
-            <a class="nav-link" href="categories.php">
+            <a class="nav-link <?php echo $activeTab === 'categories' ? 'active' : ''; ?>" href="categories_groups.php?tab=categories">
                 <i class="bi bi-tags"></i>
                 <span>Categories</span>
             </a>
         </li>
         <li class="nav-item">
-            <a class="nav-link" href="groups.php">
+            <a class="nav-link <?php echo $activeTab === 'groups' ? 'active' : ''; ?>" href="categories_groups.php?tab=groups">
                 <i class="bi bi-collection"></i>
                 <span>Groups</span>
             </a>
@@ -641,9 +643,9 @@ $total_products = $conn->query("SELECT COUNT(*) as total FROM products")->fetch_
                                     <div class="healthy-option green" onclick="selectHealthy(this, 'Green')"
                                          data-bs-toggle="tooltip" title="Healthy Choice">G</div>
                                     <div class="healthy-option amber" onclick="selectHealthy(this, 'Amber')"
-                                         data-bs-toggle="tooltip" title="Moderate">A</div>
+                                         data-bs-toggle="tooltip" title="AMBER">A</div>
                                     <div class="healthy-option red" onclick="selectHealthy(this, 'Red')"
-                                         data-bs-toggle="tooltip" title="Indulgent">R</div>
+                                         data-bs-toggle="tooltip" title="RED">R</div>
                                 </div>
                                 <input type="hidden" name="healthy_option" id="healthy_option" required
                                        data-label="Health rating">
@@ -1034,7 +1036,8 @@ $total_products = $conn->query("SELECT COUNT(*) as total FROM products")->fetch_
                 const successModal = new bootstrap.Modal(document.getElementById('successModal'));
                 successModal.show();
                 setTimeout(() => {
-                    window.location.reload();
+                    //window.location.reload();
+                    window.location.href = 'products_management.php';
                 }, 2000);
             } else {
                 throw new Error('Submission failed');
