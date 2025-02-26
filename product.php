@@ -530,7 +530,7 @@ $total_products = $conn->query("SELECT COUNT(*) as total FROM products")->fetch_
             </a>
         </li>
         <li class="nav-item">
-            <a class="nav-link active" href="product.php">
+            <a class="nav-link active" href="products_management.php">
                 <i class="bi bi-box"></i>
                 <span>Products</span>
             </a>
