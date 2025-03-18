@@ -1,21 +1,20 @@
 <?php
 require_once 'session_check.php';
 check_session(); // All authenticated users can access home
+include 'db_connection.php';
 
 // Get logged-in username
 $user_name = $_SESSION['username'];
 
-// Remove this redundant logout logic
-// if (isset($_POST['logout'])) {
-//     session_destroy();
-//     setcookie("username", "", time() - 3600, "/"); // Clear remember me cookie
-//     header("Location: index.php");
-//     exit();
-// }
+// Fetch all categories from the database
+$categories_query = "SELECT c.category_id, c.category_name, COUNT(pc.product_id) as product_count 
+                    FROM categories c 
+                    LEFT JOIN product_categories pc ON c.category_id = pc.category_id 
+                    GROUP BY c.category_id 
+                    HAVING COUNT(pc.product_id) > 0
+                    ORDER BY c.category_name ASC";
+$categories_result = $conn->query($categories_query);
 ?>
-
-
-
 
 <!DOCTYPE html>
 <html lang="en">
@@ -30,8 +29,8 @@ $user_name = $_SESSION['username'];
     <!-- Font Awesome for Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
 
-    <!-- MDBootstrap CSS -->
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/mdb-ui-kit/6.3.0/mdb.min.css" rel="stylesheet">
+    <!-- SweetAlert2 for Notifications -->
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 
     <style>
         /* Page Structure */
@@ -50,6 +49,7 @@ $user_name = $_SESSION['username'];
             align-items: center;
             justify-content: center;
             text-align: center;
+            padding: 20px;
         }
 
         /* Header */
@@ -97,6 +97,7 @@ $user_name = $_SESSION['username'];
             flex-wrap: wrap;
             justify-content: center;
             margin-top: 30px;
+            width: 100%;
         }
 
         .custom-card {
@@ -111,6 +112,7 @@ $user_name = $_SESSION['username'];
             position: relative;
             display: flex;
             align-items: flex-end;
+            cursor: pointer;
         }
 
         .custom-card:hover {
@@ -130,6 +132,18 @@ $user_name = $_SESSION['username'];
             top: 0;
         }
 
+        .product-count {
+            position: absolute;
+            bottom: 10px;
+            right: 10px;
+            background: rgba(76, 175, 80, 0.8);
+            color: white;
+            padding: 4px 8px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: bold;
+        }
+
         /* Footer */
         .footer {
             background: #78b85c;
@@ -137,6 +151,22 @@ $user_name = $_SESSION['username'];
             text-align: center;
             padding: 10px;
             width: 100%;
+        }
+
+        /* Empty State */
+        .empty-state {
+            text-align: center;
+            padding: 40px;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0px 4px 15px rgba(0, 0, 0, 0.05);
+            margin-top: 40px;
+        }
+
+        .empty-state i {
+            font-size: 4rem;
+            color: #adb5bd;
+            margin-bottom: 20px;
         }
 
         /* Responsive */
@@ -157,56 +187,50 @@ $user_name = $_SESSION['username'];
     </div>
     <div class="user-options">
         <span>Welcome, <?php echo htmlspecialchars($user_name); ?></span>
-
-
         <form method="post" action="logout.php">
             <button type="submit" class="btn btn-logout">Sign Out</button>
         </form>
-        <!-- Settings Icon -->
-<!--        <div style="padding-left: 20px">-->
-<!--            <img src="img/settings.svg" alt="Settings">-->
-<!--        </div>-->
         <?php if (isset($_SESSION['uType']) && ($_SESSION['uType'] === 'Admin' || $_SESSION['uType'] === 'Manager')): ?>
-            <a href="dashboard.php">
+            <a href="dashboard.php" style="margin-left: 20px;">
                 <img src="img/settings.svg" alt="Settings">
             </a>
         <?php else: ?>
-            <a href="#" onclick="showNoAccessPopup();">
+            <a href="#" onclick="showNoAccessPopup();" style="margin-left: 20px;">
                 <img src="img/settings.svg" alt="Settings">
             </a>
         <?php endif; ?>
-
-        <script>
-            function showNoAccessPopup() {
-                Swal.fire({
-                    icon: 'error',
-                    title: 'Access Denied',
-                    text: "You don't have permission to access the dashboard.",
-                });
-            }
-        </script>
-
     </div>
 </header>
 
 <!-- Main Content -->
 <div class="container-custom">
     <h2>Welcome to Zouki Food Insights</h2>
-    <p>Explore the food images, ingredients, and allergens</p>
+    <p>Explore categories to find food products, ingredients, and recipes</p>
 
     <!-- Card Section -->
     <div class="card-container">
         <?php
-        $cards = [
-            ["title" => "Hot Food Rotation", "image" => "img/2.png"],
-            ["title" => "Premade Rotation", "image" => "img/3.png"],
-            ["title" => "Theme Lunch", "image" => "img/4.png"],
-            ["title" => "Zouki Catering", "image" => "img/3.png"]
-        ];
+        if ($categories_result->num_rows > 0) {
+            // Images to cycle through for categories
+            $backgrounds = ["img/1.png", "img/2.png", "img/3.png", "img/4.png"];
+            $bg_index = 0;
 
-        foreach ($cards as $card) {
-            echo '<div class="custom-card" style="background-image: url(\'' . $card["image"] . '\');">
-                    <h5>' . htmlspecialchars($card["title"]) . '</h5>
+            while ($category = $categories_result->fetch_assoc()) {
+                // Cycle through background images
+                $bg_image = $backgrounds[$bg_index % count($backgrounds)];
+                $bg_index++;
+
+                echo '<div class="custom-card" style="background-image: url(\'' . $bg_image . '\');" 
+                        onclick="window.location.href=\'category_products.php?id=' . $category['category_id'] . '\'">
+                        <h5>' . htmlspecialchars($category['category_name']) . '</h5>
+                        <span class="product-count">' . $category['product_count'] . ' Products</span>
+                      </div>';
+            }
+        } else {
+            echo '<div class="empty-state">
+                    <i class="fas fa-utensils"></i>
+                    <h3>No Categories Found</h3>
+                    <p>There are no product categories available yet.</p>
                   </div>';
         }
         ?>
@@ -218,11 +242,15 @@ $user_name = $_SESSION['username'];
     Copyright © <?php echo date("Y"); ?>. All rights reserved.
 </footer>
 
-<!-- Bootstrap JS -->
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
-
-<!-- MDBootstrap JS -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/mdb-ui-kit/6.3.0/mdb.min.js"></script>
+<script>
+    function showNoAccessPopup() {
+        Swal.fire({
+            icon: 'error',
+            title: 'Access Denied',
+            text: "You don't have permission to access the dashboard.",
+        });
+    }
+</script>
 
 </body>
 </html>
