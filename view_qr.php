@@ -140,6 +140,13 @@ if ($product_id <= 0) {
             filter: brightness(0) invert(1); /* Makes the logo white */
         }
 
+        .logo-text {
+            font-size: 1.4rem;
+            font-weight: 700;
+            letter-spacing: 1px;
+            color: white;
+        }
+
         .card-body {
             padding: 0;
         }
@@ -207,19 +214,6 @@ if ($product_id <= 0) {
         .health-red {
             background-color: rgba(220, 53, 69, 0.1);
             color: #dc3545;
-        }
-
-        .categories-line {
-            margin: 5px 0;
-            font-size: 0.9rem;
-            color: var(--text-light);
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-
-        .categories-line .icon {
-            color: var(--primary-color);
         }
 
         .info-tabs {
@@ -310,15 +304,6 @@ if ($product_id <= 0) {
             font-size: 0.95rem;
         }
 
-        .action-buttons {
-            display: flex;
-            justify-content: center;
-            gap: 10px;
-            padding: 15px 20px;
-            background-color: #f8f9fa;
-            border-top: 1px solid #eee;
-        }
-
         .error-container {
             text-align: center;
             padding: 40px 20px;
@@ -348,7 +333,9 @@ if ($product_id <= 0) {
     <?php else: ?>
         <div class="product-card">
             <div class="card-header">
-                <i class="fas fa-info-circle me-2"></i> Product Information
+                <span><i class="fas fa-info-circle me-2"></i>Product Information</span>
+
+                <img src="img/ZoukiLogo.svg" alt="ZOUKI" class="zouki-logo">
             </div>
             <div class="card-body">
                 <div class="product-info-header">
