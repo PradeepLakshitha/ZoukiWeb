@@ -117,6 +117,66 @@ if (isset($_SESSION['error'])) {
     $errorMessage = $_SESSION['error'];
     unset($_SESSION['error']);
 }
+
+// Add this code at the beginning of products_management.php after the initialization section
+// (after loading the required files and checking for authentication)
+
+// Handle Product Delete Action
+if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['action']) && $_POST['action'] === 'delete') {
+    $product_id = (int) $_POST['product_id'];
+
+    try {
+        // Start a transaction to ensure all operations complete successfully
+        $conn->begin_transaction();
+
+        // Get the product details for image reference
+        $product_query = "SELECT image FROM products WHERE product_id = ?";
+        $stmt = $conn->prepare($product_query);
+        $stmt->bind_param("i", $product_id);
+        $stmt->execute();
+        $result = $stmt->get_result();
+        $product = $result->fetch_assoc();
+
+        // Delete associated categories
+        $stmt = $conn->prepare("DELETE FROM product_categories WHERE product_id = ?");
+        $stmt->bind_param("i", $product_id);
+        if (!$stmt->execute()) {
+            throw new Exception("Failed to delete product categories: " . $conn->error);
+        }
+
+        // Delete associated groups
+        $stmt = $conn->prepare("DELETE FROM product_groups WHERE product_id = ?");
+        $stmt->bind_param("i", $product_id);
+        if (!$stmt->execute()) {
+            throw new Exception("Failed to delete product groups: " . $conn->error);
+        }
+
+        // Delete the product
+        $stmt = $conn->prepare("DELETE FROM products WHERE product_id = ?");
+        $stmt->bind_param("i", $product_id);
+        if (!$stmt->execute()) {
+            throw new Exception("Failed to delete product: " . $conn->error);
+        }
+
+        // Delete the product image if it exists
+        if (!empty($product['image']) && file_exists($product['image'])) {
+            unlink($product['image']);
+        }
+
+        // Commit the transaction
+        $conn->commit();
+
+        $_SESSION['success'] = "Product successfully deleted!";
+    } catch (Exception $e) {
+        // Rollback the transaction on error
+        $conn->rollback();
+        $_SESSION['error'] = "Error: " . $e->getMessage();
+    }
+
+    // Redirect back to the products page
+    header("Location: products_management.php");
+    exit();
+}
 ?>
 
 <!DOCTYPE html>
