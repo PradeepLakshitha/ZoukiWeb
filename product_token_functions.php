@@ -27,32 +27,24 @@ function generateProductSafetyUrl($product_id, $base_url) {
 }
 
 /**
- * Generate QR code SVG for a product
+ * Generate QR code image tag for a product using external API
  *
  * @param int $product_id The product ID
  * @param string $base_url The base URL of the site
- * @return string The QR code as SVG
+ * @return string The QR code image HTML
  */
 function generateProductQrCode($product_id, $base_url) {
-    // Include the PHP QR Code library
-    require_once 'phpqrcode/qrlib.php';
-
-    // Generate the URL
+    // Generate the safety URL
     $url = generateProductSafetyUrl($product_id, $base_url);
 
-    // Create a temporary file to store the QR code
-    $tempfile = tempnam(sys_get_temp_dir(), 'qrcode');
+    // URL encode for use in API
+    $encoded_url = urlencode($url);
 
-    // Generate the QR code as an SVG
-    QRcode::svg($url, $tempfile, 'M', 4, 2);
+    // Use Google Charts API (no installation required)
+    $qr_src = "https://chart.googleapis.com/chart?chs=250x250&cht=qr&chl={$encoded_url}&choe=UTF-8";
 
-    // Read the SVG content
-    $svg_content = file_get_contents($tempfile);
-
-    // Clean up the temporary file
-    unlink($tempfile);
-
-    return $svg_content;
+    // Return image HTML
+    return '<img src="' . $qr_src . '" alt="Product Safety QR Code" class="img-fluid" style="max-width: 100%;">';
 }
 
 /**

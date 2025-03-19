@@ -53,6 +53,18 @@ if ($category_result->num_rows > 0) {
     $back_link = "category_products.php?id=" . $category['category_id'];
     $category_name = $category['category_name'];
 }
+
+// Create the link for the QR code - this will point to view_qr.php
+$qr_url = "view_qr.php?id=" . $product_id;
+
+// Store the raw data for the test modal
+$qr_data = array(
+    'id' => $product_id,
+    'name' => $product['product_name'],
+    'allergens' => $product['allergens'],
+    'ingredients' => $product['ingredients'],
+    'healthy_option' => $product['healthy_option']
+);
 ?>
 
 <!DOCTYPE html>
@@ -71,6 +83,9 @@ if ($category_result->num_rows > 0) {
     <!-- jsPDF for PDF Generation -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+
+    <!-- QR Code Library -->
+    <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"></script>
 
     <style>
         body {
@@ -197,7 +212,16 @@ if ($category_result->num_rows > 0) {
 
         .recipe-title-section {
             flex: 1;
-            padding: 0 30px;
+            padding: 0 20px;
+        }
+
+        .recipe-qr-section {
+            width: 150px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            margin-left: 10px;
         }
 
         .recipe-title {
@@ -464,6 +488,40 @@ if ($category_result->num_rows > 0) {
             margin-top: auto;
         }
 
+        /* QR Code Container Styles */
+        .qr-section {
+            background: white;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 30px;
+            box-shadow: 0px 4px 15px rgba(0, 0, 0, 0.1);
+            text-align: center;
+        }
+
+        .qr-section h4 {
+            margin-bottom: 15px;
+            color: #4CAF50;
+        }
+
+        .qr-code-container {
+            display: inline-block;
+            padding: 15px;
+            background: white;
+            border-radius: 8px;
+            border: 1px solid #e0e0e0;
+            margin-bottom: 15px;
+        }
+
+        .qr-code-container img {
+            max-width: 100%;
+        }
+
+        .qr-description {
+            font-size: 0.9rem;
+            color: #6c757d;
+            margin-bottom: 15px;
+        }
+
         @media (max-width: 768px) {
             .recipe-header {
                 flex-direction: column;
@@ -476,6 +534,12 @@ if ($category_result->num_rows > 0) {
 
             .recipe-title-section {
                 padding: 0;
+                margin-bottom: 20px;
+            }
+
+            .recipe-qr-section {
+                width: 100%;
+                margin-left: 0;
             }
 
             .recipe-meta {
@@ -541,6 +605,9 @@ if ($category_result->num_rows > 0) {
             </a>
         </div>
         <div class="action-buttons">
+            <button class="btn btn-outline-success" onclick="printQRCode()">
+                <i class="fas fa-qrcode"></i> Print QR Code
+            </button>
             <button class="btn btn-outline-primary" onclick="printRecipe()">
                 <i class="fas fa-print"></i> Print Recipe
             </button>
@@ -549,6 +616,8 @@ if ($category_result->num_rows > 0) {
             </button>
         </div>
     </div>
+
+    <input type="hidden" id="qr-raw-data" value='<?php echo htmlspecialchars(json_encode($qr_data), ENT_QUOTES); ?>'>
 
     <div class="recipe-card" id="recipe-card">
         <div class="recipe-header">
@@ -592,6 +661,15 @@ if ($category_result->num_rows > 0) {
                         </div>
                     <?php endif; ?>
                 </div>
+            </div>
+
+            <!-- QR Code on right side of header -->
+            <div class="recipe-qr-section">
+                <div class="qr-code-container" id="qrcode"></div>
+                <div class="qr-label">Scan for info</div>
+                <a href="<?php echo $qr_url; ?>" target="_blank" class="btn btn-sm btn-outline-secondary qr-test-btn">
+                    <i class="fas fa-external-link-alt"></i> View QR Link
+                </a>
             </div>
         </div>
 
@@ -861,6 +939,24 @@ if ($category_result->num_rows > 0) {
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 
 <script>
+    // Generate QR Code
+    document.addEventListener('DOMContentLoaded', function() {
+        // Create QR Code
+        generateQRCode();
+    });
+
+    function generateQRCode() {
+        var qrUrl = "<?php echo $qr_url; ?>";
+        var typeNumber = 0; // Auto-detect
+        var errorCorrectionLevel = 'L'; // Low
+        var qr = qrcode(typeNumber, errorCorrectionLevel);
+        qr.addData(qrUrl);
+        qr.make();
+
+        // Create image tag
+        document.getElementById('qrcode').innerHTML = qr.createImgTag(4); // Size multiplier
+    }
+
     // Print functionality
     function printRecipe() {
         window.print();
@@ -908,7 +1004,7 @@ if ($category_result->num_rows > 0) {
 
     // Print QR Code functionality
     function printQRCode() {
-        const printContent = document.querySelector('.qr-code-container').innerHTML;
+        const qrCodeContainer = document.querySelector('.qr-code-container').innerHTML;
         const productName = '<?php echo addslashes($product['product_name']); ?>';
 
         const printWindow = window.open('', '_blank');
@@ -941,7 +1037,7 @@ if ($category_result->num_rows > 0) {
                         Safety Information QR Code for ${productName}
                     </div>
                     <div class="qr-container">
-                        ${printContent}
+                        ${qrCodeContainer}
                     </div>
                     <div class="qr-footer">
                         Scan this QR code for allergen and ingredient information
