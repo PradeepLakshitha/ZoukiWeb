@@ -239,7 +239,7 @@ $categories_result = $conn->query($categories_query);
 
 <!-- Footer -->
 <footer class="footer">
-    Copyright © <?php echo date("Y"); ?>. All rights reserved.
+    Copyright © <?php echo date("Y"); ?>. ~Zouki Group of Companies~ All rights reserved.
 </footer>
 
 <script>

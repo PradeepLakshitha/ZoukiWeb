@@ -64,8 +64,9 @@ if (isset($_COOKIE['username']) && !isset($_SESSION['username'])) {
 
 <footer class="mt-auto text-center py-3 w-100 position-relative footer">
     <div class="container">
-        <p class="mb-0">Copyright © 2025. All rights reserved.</p>
+        Copyright © <?php echo date("Y"); ?>. ~Zouki Group of Companies~ All rights reserved.
     </div>
+
 </footer>
 
 <script>

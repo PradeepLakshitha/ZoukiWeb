@@ -85,7 +85,7 @@ $userName = $_SESSION['username'];
             <div id="collapseTwo" class="collapse" aria-labelledby="headingTwo" data-parent="#accordionSidebar">
                 <div class="bg-white py-2 collapse-inner rounded">
                     <h6 class="collapse-header">User Management</h6>
-                    <a class="collapse-item" href="buttons.html">Add & Edit Users</a>
+                    <a class="collapse-item" href="users.php">Add & Edit Users</a>
                     <a class="collapse-item" href="cards.html">Deactivate Users</a>
                 </div>
             </div>
