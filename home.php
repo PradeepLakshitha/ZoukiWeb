@@ -212,7 +212,7 @@ $categories_result = $conn->query($categories_query);
         <?php
         if ($categories_result->num_rows > 0) {
             // Images to cycle through for categories
-            $backgrounds = ["img/1.png", "img/2.png", "img/3.png", "img/4.png"];
+            $backgrounds = ["img/2.png", "img/2.png", "img/3.png", "img/4.png"];
             $bg_index = 0;
 
             while ($category = $categories_result->fetch_assoc()) {

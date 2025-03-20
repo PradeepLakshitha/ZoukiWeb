@@ -5,6 +5,13 @@ if (session_status() === PHP_SESSION_NONE) {
 }
 
 function check_session($required_roles = null) {
+    // Log the check to a file
+    $log = "Session check at " . date('Y-m-d H:i:s') . "\n";
+    $log .= "Session ID: " . session_id() . "\n";
+    $log .= "Session data: " . print_r($_SESSION, true) . "\n";
+    $log .= "Required roles: " . print_r($required_roles, true) . "\n";
+    file_put_contents('session_check.log', $log, FILE_APPEND);
+
     // Basic login check
     if (!isset($_SESSION['username'])) {
         // Not logged in at all
@@ -27,12 +34,5 @@ function check_session($required_roles = null) {
     }
 
     return true;
-}
-
-// Optional debugging function
-function debug_session() {
-    echo '<div class="alert alert-info"><h5>Session Debug:</h5><pre>';
-    print_r($_SESSION);
-    echo '</pre></div>';
 }
 ?>

@@ -1,0 +1,75 @@
+# Enable URL Rewriting
+RewriteEngine On
+
+# Base directory
+RewriteBase /
+
+# Protect .htaccess and other sensitive files
+<FilesMatch "^\.ht|\.log$|db_connection\.php$">
+  Order allow,deny
+  Deny from all
+</FilesMatch>
+
+# Friendly URLs for QR codes
+RewriteRule ^qr/([0-9]+)$ view_qr.php?id=$1 [L]
+
+# Friendly URLs for product details
+RewriteRule ^product/([0-9]+)$ product_detail.php?id=$1 [L]
+
+# Friendly URLs for categories
+RewriteRule ^category/([0-9]+)$ category_products.php?id=$1 [L]
+
+# Friendly URLs for products management
+RewriteRule ^products/?$ products_management.php [L]
+RewriteRule ^products/edit/([0-9]+)$ product_edit.php?id=$1 [L]
+
+# Friendly URLs for categories and groups management
+RewriteRule ^categories/?$ categories_groups.php?tab=categories [L]
+RewriteRule ^groups/?$ categories_groups.php?tab=groups [L]
+
+# Prevent directory listing
+Options -Indexes
+
+# Security headers
+<IfModule mod_headers.c>
+  # Protect against clickjacking attacks
+  Header set X-Frame-Options "SAMEORIGIN"
+  # Prevent MIME-type sniffing
+  Header set X-Content-Type-Options "nosniff"
+  # Enable XSS protection in older browsers
+  Header set X-XSS-Protection "1; mode=block"
+</IfModule>
+
+# PHP settings
+<IfModule mod_php7.c>
+  # Increase memory limit for file uploads
+  php_value memory_limit 256M
+  php_value upload_max_filesize 20M
+  php_value post_max_size 20M
+  # Hide PHP version (security best practice)
+  php_flag expose_php Off
+</IfModule>
+
+# Error documents
+ErrorDocument 404 /error.php?code=404
+ErrorDocument 500 /error.php?code=500
+
+# Enable gzip compression for faster page loads
+<IfModule mod_deflate.c>
+  AddOutputFilterByType DEFLATE text/html text/plain text/xml text/css text/javascript application/javascript application/x-javascript application/json
+</IfModule>
+
+# Set default charset
+AddDefaultCharset UTF-8
+
+# Cache control for static assets
+<IfModule mod_expires.c>
+  ExpiresActive On
+  ExpiresByType image/jpg "access plus 1 year"
+  ExpiresByType image/jpeg "access plus 1 year"
+  ExpiresByType image/png "access plus 1 year"
+  ExpiresByType image/gif "access plus 1 year"
+  ExpiresByType image/svg+xml "access plus 1 year"
+  ExpiresByType text/css "access plus 1 month"
+  ExpiresByType application/javascript "access plus 1 month"
+</IfModule>

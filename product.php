@@ -1,4 +1,8 @@
 <?php
+error_reporting(E_ALL);
+ini_set('display_errors', 1);
+file_put_contents('debug.log', "Form submitted: " . date('Y-m-d H:i:s') . "\n", FILE_APPEND);
+
 require_once 'session_check.php';
 check_session(['Admin', 'Manager']);
 include 'db_connection.php';
@@ -9,13 +13,24 @@ if (!isset($_SESSION['username']) || ($_SESSION['uType'] !== 'Admin' && $_SESSIO
     header("Location: dashboard.php");
     exit();
 }
+$upload_dir = "uploads/";
+// Set active tab for navigation
+$activeTab = 'products';
 
+if (!is_dir($upload_dir)) {
+    mkdir($upload_dir, 0777, true);
+}
 // Initialize variables
 $successMessage = '';
 $errorMessage = '';
 
 // Handle Product Actions (Add, Update, Delete)
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
+
+// Debug POST data
+    error_log("POST data received: " . print_r($_POST, true));
+    error_log("FILES data received: " . print_r($_FILES, true));
+
     $action = $_POST['action'];
     $product_id = $_POST['product_id'] ?? null;
     $product_name = trim($_POST['product_name']);
@@ -102,7 +117,7 @@ if (isset($_SESSION['error'])) {
 
 // Fetch Categories & Groups
 $categories_result = $conn->query("SELECT category_id, category_name FROM categories ORDER BY category_name");
-$groups_result = $conn->query("SELECT group_id, group_name FROM groups ORDER BY group_name");
+$groups_result = $conn->query("SELECT group_id, group_name FROM `groups` ORDER BY group_name");
 
 // Count total products
 $total_products = $conn->query("SELECT COUNT(*) as total FROM products")->fetch_assoc()['total'];

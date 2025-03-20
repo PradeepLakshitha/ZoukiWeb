@@ -91,12 +91,12 @@ $total_pages = ceil($total_products / $limit);
 $products_query = "
     SELECT p.*, 
            GROUP_CONCAT(DISTINCT c.category_name ORDER BY c.category_name SEPARATOR ', ') as categories,
-           GROUP_CONCAT(DISTINCT g.group_name ORDER BY g.group_name SEPARATOR ', ') as groups
+           GROUP_CONCAT(DISTINCT g.group_name ORDER BY g.group_name SEPARATOR ', ') as `groups`
     FROM products p
     LEFT JOIN product_categories pc ON p.product_id = pc.product_id
     LEFT JOIN categories c ON pc.category_id = c.category_id
     LEFT JOIN product_groups pg ON p.product_id = pg.product_id
-    LEFT JOIN groups g ON pg.group_id = g.group_id
+    LEFT JOIN `groups` g ON pg.group_id = g.group_id
     $search_condition
     GROUP BY p.product_id
     ORDER BY p.product_name ASC
@@ -106,7 +106,7 @@ $products_result = $conn->query($products_query);
 
 // Fetch all categories and groups for filters
 $categories_result = $conn->query("SELECT category_id, category_name FROM categories ORDER BY category_name");
-$groups_result = $conn->query("SELECT group_id, group_name FROM groups ORDER BY group_name");
+$groups_result = $conn->query("SELECT group_id, group_name FROM `groups` ORDER BY group_name");
 
 // Check for session messages
 if (isset($_SESSION['success'])) {

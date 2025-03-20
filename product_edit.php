@@ -207,7 +207,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['action']) && $_POST['a
 
 // Fetch Categories & Groups for dropdowns
 $categories_result = $conn->query("SELECT category_id, category_name FROM categories ORDER BY category_name");
-$groups_result = $conn->query("SELECT group_id, group_name FROM groups ORDER BY group_name");
+$groups_result = $conn->query("SELECT group_id, group_name FROM `groups` ORDER BY group_name");
 
 // Check for session messages
 if (isset($_SESSION['success'])) {

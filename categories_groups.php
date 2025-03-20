@@ -78,7 +78,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['action'])) {
 
         try {
             if ($action === "group_add" && !empty($group_name)) {
-                $stmt = $conn->prepare("INSERT INTO groups (group_name) VALUES (?)");
+                $stmt = $conn->prepare("INSERT INTO `groups` (group_name) VALUES (?)");
                 $stmt->bind_param("s", $group_name);
 
                 if ($stmt->execute()) {
@@ -87,7 +87,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['action'])) {
                     throw new Exception("Failed to add group.");
                 }
             } elseif ($action === "group_update" && !empty($group_id) && !empty($group_name)) {
-                $stmt = $conn->prepare("UPDATE groups SET group_name = ? WHERE group_id = ?");
+                $stmt = $conn->prepare("UPDATE `groups` SET group_name = ? WHERE group_id = ?");
                 $stmt->bind_param("si", $group_name, $group_id);
 
                 if ($stmt->execute()) {
@@ -107,7 +107,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['action'])) {
                     throw new Exception("Cannot delete group: it is associated with " . $count . " product(s).");
                 }
 
-                $stmt = $conn->prepare("DELETE FROM groups WHERE group_id = ?");
+                $stmt = $conn->prepare("DELETE FROM `groups` WHERE group_id = ?");
                 $stmt->bind_param("i", $group_id);
 
                 if ($stmt->execute()) {
@@ -149,7 +149,7 @@ $categories_count = $categories_result->num_rows;
 
 // Fetch all groups
 $groups_query = "SELECT g.group_id, g.group_name, COUNT(pg.product_id) as product_count 
-                 FROM groups g 
+                 FROM `groups` g 
                  LEFT JOIN product_groups pg ON g.group_id = pg.group_id 
                  GROUP BY g.group_id 
                  ORDER BY g.group_name ASC";

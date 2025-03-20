@@ -5,6 +5,7 @@
 // Include database connection
 include 'db_connection.php';
 
+$base_url = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? "https" : "http") . "://$_SERVER[HTTP_HOST]";
 // Get product ID from query parameter
 $product_id = isset($_GET['id']) ? (int)$_GET['id'] : 0;
 
@@ -41,7 +42,7 @@ if ($product_id <= 0) {
         }
 
         $groups_query = "SELECT g.group_name 
-                       FROM groups g
+                       FROM `groups` g
                        JOIN product_groups pg ON g.group_id = pg.group_id
                        WHERE pg.product_id = ?";
         $stmt = $conn->prepare($groups_query);
@@ -335,12 +336,12 @@ if ($product_id <= 0) {
             <div class="card-header">
                 <span><i class="fas fa-info-circle me-2"></i>Product Information</span>
 
-                <img src="img/ZoukiLogo.svg" alt="ZOUKI" class="zouki-logo">
+                <img src="/img/ZoukiLogo.svg" alt="ZOUKI" class="zouki-logo">
             </div>
             <div class="card-body">
                 <div class="product-info-header">
                     <?php if (!empty($product['image']) && file_exists($product['image'])): ?>
-                        <img src="<?php echo htmlspecialchars($product['image']); ?>" alt="<?php echo htmlspecialchars($product['product_name']); ?>" class="product-img">
+                        <img src="<?php echo $base_url .'/'. htmlspecialchars($product['image']); ?>" alt="<?php echo htmlspecialchars($product['product_name']); ?>" class="product-img">
                     <?php else: ?>
                         <div class="product-img-placeholder">
                             <i class="fas fa-utensils fa-2x text-muted"></i>

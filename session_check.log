@@ -1,0 +1,57 @@
+Session check at 2025-03-20 02:54:21
+Session ID: 302fsddhis3kpu18731mh74u4d
+Session data: Array
+(
+    [error] => Please log in to continue.
+)
+
+Required roles: Array
+(
+    [0] => Admin
+    [1] => Manager
+)
+
+Session check at 2025-03-20 02:55:07
+Session ID: 302fsddhis3kpu18731mh74u4d
+Session data: Array
+(
+    [error] => Please log in to continue.
+)
+
+Required roles: Array
+(
+    [0] => Admin
+    [1] => Manager
+)
+
+Session check at 2025-03-20 02:55:34
+Session ID: v31dvem1lf1a6kudh43sjsvq4g
+Session data: Array
+(
+    [error] => Please log in to continue.
+    [userID] => 5
+    [username] => pradeepl
+    [uType] => Admin
+    [logged_in] => 1
+    [ip_address] => ::1
+)
+
+Required roles: 
+Session check at 2025-03-20 02:55:37
+Session ID: v31dvem1lf1a6kudh43sjsvq4g
+Session data: Array
+(
+    [error] => Please log in to continue.
+    [userID] => 5
+    [username] => pradeepl
+    [uType] => Admin
+    [logged_in] => 1
+    [ip_address] => ::1
+)
+
+Required roles: Array
+(
+    [0] => Admin
+    [1] => Manager
+)
+

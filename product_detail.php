@@ -12,7 +12,7 @@ if (!isset($_GET['id']) || empty($_GET['id'])) {
 $product_id = (int)$_GET['id'];
 
 // Get the product information with its categories and groups
-$product_query = "SELECT p.*, 
+/*$product_query = "SELECT p.*,
                   GROUP_CONCAT(DISTINCT c.category_name ORDER BY c.category_name SEPARATOR ', ') as categories,
                   GROUP_CONCAT(DISTINCT g.group_name ORDER BY g.group_name SEPARATOR ', ') as groups
                   FROM products p
@@ -20,6 +20,17 @@ $product_query = "SELECT p.*,
                   LEFT JOIN categories c ON pc.category_id = c.category_id
                   LEFT JOIN product_groups pg ON p.product_id = pg.product_id
                   LEFT JOIN groups g ON pg.group_id = g.group_id
+                  WHERE p.product_id = ?
+                  GROUP BY p.product_id";*/
+
+$product_query = "SELECT p.*, 
+                  GROUP_CONCAT(DISTINCT c.category_name ORDER BY c.category_name SEPARATOR ', ') as categories,
+                  GROUP_CONCAT(DISTINCT g.group_name ORDER BY g.group_name SEPARATOR ', ') as `groups`
+                  FROM products p
+                  LEFT JOIN product_categories pc ON p.product_id = pc.product_id
+                  LEFT JOIN categories c ON pc.category_id = c.category_id
+                  LEFT JOIN product_groups pg ON p.product_id = pg.product_id
+                  LEFT JOIN `groups` g ON pg.group_id = g.group_id
                   WHERE p.product_id = ?
                   GROUP BY p.product_id";
 
@@ -55,7 +66,9 @@ if ($category_result->num_rows > 0) {
 }
 
 // Create the link for the QR code - this will point to view_qr.php
-$qr_url = "view_qr.php?id=" . $product_id;
+//$qr_url = "view_qr.php?id=" . $product_id;
+//$qr_url = "http://54.206.221.88/view_qr.php?id=" . $product_id;
+$qr_url = "http://54.206.221.88/qr/" . $product_id;
 
 // Store the raw data for the test modal
 $qr_data = array(
