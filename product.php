@@ -41,7 +41,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $categories = $_POST['categories'] ?? [];
     $groups = $_POST['groups'] ?? [];
 
-    // Image Upload Handling
+// Image Upload Handling
     $image = "";
     if (!empty($_FILES['image']['name'])) {
         $upload_dir = "uploads/";
@@ -49,12 +49,18 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             mkdir($upload_dir, 0777, true);
         }
 
+        // Get original filename and extension
+        $original_filename = pathinfo($_FILES['image']['name'], PATHINFO_FILENAME);
         $file_extension = strtolower(pathinfo($_FILES['image']['name'], PATHINFO_EXTENSION));
         $allowed_extensions = array('jpg', 'jpeg', 'png', 'gif');
 
         if (in_array($file_extension, $allowed_extensions)) {
-            $unique_filename = uniqid() . '.' . $file_extension;
-            $image = $upload_dir . $unique_filename;
+            // Format the date as DD-MM-YYYY
+            $date_formatted = date('d-m-Y');
+
+            // Create new filename with the required format
+            $new_filename = $original_filename . '_' . $date_formatted . '.' . $file_extension;
+            $image = $upload_dir . $new_filename;
 
             if (move_uploaded_file($_FILES['image']['tmp_name'], $image)) {
                 // File uploaded successfully
