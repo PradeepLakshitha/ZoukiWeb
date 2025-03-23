@@ -25,7 +25,7 @@ if (!is_dir($upload_dir)) {
     mkdir($upload_dir, 0777, true);
 }
 
-// Handle Image Upload
+// Handle Image Upload or Delete
 if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['action'])) {
     if ($_POST['action'] === 'upload') {
         // Check if files were uploaded
@@ -121,88 +121,42 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['action'])) {
         }
     } elseif ($_POST['action'] === 'delete' && isset($_POST['image'])) {
         $imageToDelete = trim($_POST['image']);
-        $thumbToDelete = $upload_dir . "thumbnails/" . basename($imageToDelete);
 
-        // Security check - make sure we're only deleting from uploads directory
-        if (strpos($imageToDelete, $upload_dir) === 0 && file_exists($imageToDelete)) {
-            // Delete the main image
-            if (unlink($imageToDelete)) {
-                // Try to delete the thumbnail too if it exists
-                if (file_exists($thumbToDelete)) {
-                    unlink($thumbToDelete);
-                }
-                $successMessage = "Image deleted successfully.";
-            } else {
-                $errorMessage = "Failed to delete image.";
-            }
-        } else {
-            $errorMessage = "Invalid image path or image not found.";
+        // Debug the image path
+        error_log("Attempting to delete image: " . $imageToDelete);
+
+        // Skip empty paths
+        if (empty($imageToDelete)) {
+            $errorMessage = "No image path provided for deletion.";
+            error_log("Delete failed: Empty image path");
         }
+        else {
+            $thumbToDelete = $upload_dir . "thumbnails/" . basename($imageToDelete);
 
-        // Redirect to prevent form resubmission
-        header("Location: bulk_image_upload.php");
-        exit();
-    } elseif ($_POST['action'] === 'replace' && isset($_POST['old_image']) && isset($_FILES['new_image'])) {
-        $oldImage = trim($_POST['old_image']);
+            // Security check - make sure we're only deleting from uploads directory
+            if (strpos($imageToDelete, $upload_dir) === 0 && file_exists($imageToDelete)) {
+                error_log("Image exists, attempting to delete: " . $imageToDelete);
 
-        // Check if the thumbnail exists
-        $thumbDir = $upload_dir . "thumbnails/";
-        $oldThumb = $thumbDir . basename($oldImage);
-
-        // Security check - make sure we're only replacing files in uploads directory
-        if (strpos($oldImage, $upload_dir) === 0 && file_exists($oldImage)) {
-            // Get file info of the new image
-            $fileName = $_FILES['new_image']['name'];
-            $fileTmpName = $_FILES['new_image']['tmp_name'];
-            $fileSize = $_FILES['new_image']['size'];
-            $fileError = $_FILES['new_image']['error'];
-
-            // Get file extension of the new image
-            $fileExt = strtolower(pathinfo($fileName, PATHINFO_EXTENSION));
-
-            // Define allowed file types
-            $allowed = array('jpg', 'jpeg', 'png', 'gif');
-
-            // Validate file type
-            if (in_array($fileExt, $allowed)) {
-                // Check for upload errors
-                if ($fileError === 0) {
-                    // Check file size (5MB limit)
-                    if ($fileSize < 5000000) {
-                        // Make sure thumbnails directory exists
-                        if (!is_dir($thumb_dir)) {
-                            mkdir($thumb_dir, 0777, true);
-                        }
-
-                        // Save the original file before processing
-                        $tempFile = $upload_dir . 'temp_' . uniqid() . '.' . $fileExt;
-                        if (move_uploaded_file($fileTmpName, $tempFile)) {
-                            // Process the new image (using the original file name to maintain links)
-                            if (processProductImage($tempFile, $oldImage, $oldThumb, $fileExt)) {
-                                // Remove the temp file
-                                @unlink($tempFile);
-                                $successMessage = "Image replaced successfully.";
-                            } else {
-                                $errorMessage = "Failed to process replacement image.";
-                            }
-                        } else {
-                            $errorMessage = "Failed to upload replacement image.";
-                        }
-                    } else {
-                        $errorMessage = "Replacement image size exceeds limit (5MB).";
+                // Delete the main image
+                if (unlink($imageToDelete)) {
+                    // Try to delete the thumbnail too if it exists
+                    if (file_exists($thumbToDelete)) {
+                        unlink($thumbToDelete);
                     }
+                    $successMessage = "Image deleted successfully.";
+                    error_log("Image deleted successfully");
                 } else {
-                    $errorMessage = "Upload error code: " . $fileError;
+                    $errorMessage = "Failed to delete image.";
+                    error_log("Delete failed: unlink() returned false");
                 }
             } else {
-                $errorMessage = "File type not allowed. Only JPG, JPEG, PNG & GIF files are accepted.";
+                $errorMessage = "Invalid image path or image not found: " . $imageToDelete;
+                error_log("Delete failed: Image not found or invalid path");
             }
-        } else {
-            $errorMessage = "Original image not found: " . $oldImage;
         }
 
         // Redirect to prevent form resubmission
-        header("Location: bulk_image_upload.php");
+        header("Location: bulk_image_upload.php?success=" . urlencode($successMessage));
         exit();
     }
 }
@@ -322,21 +276,43 @@ if (is_dir($upload_dir)) {
     $files = scandir($upload_dir);
     foreach ($files as $file) {
         $fileExt = strtolower(pathinfo($file, PATHINFO_EXTENSION));
-        if ($file !== '.' && $file !== '..' && in_array($fileExt, ['jpg', 'jpeg', 'png', 'gif'])) {
-            $existingImages[] = [
-                'name' => $file,
-                'path' => $upload_dir . $file,
-                'size' => round(filesize($upload_dir . $file) / 1024, 2) . ' KB',
-                'type' => mime_content_type($upload_dir . $file),
-                'date' => date('Y-m-d H:i:s', filemtime($upload_dir . $file))
-            ];
+        $fullPath = $upload_dir . $file;
+
+        // Skip directories, temporary files, and non-image files
+        if (is_dir($fullPath) ||
+            $file === '.' ||
+            $file === '..' ||
+            strpos($file, 'temp_') === 0 ||
+            strpos($file, 'backup_') === 0 ||
+            !in_array($fileExt, ['jpg', 'jpeg', 'png', 'gif'])) {
+            continue;
         }
+
+        $imagePath = $fullPath;
+        $displayPath = $imagePath;
+
+        $existingImages[] = [
+            'name' => $file,
+            'path' => $displayPath,
+            'real_path' => $fullPath, // Store the real path without cache busting
+            'size' => round(filesize($fullPath) / 1024, 2) . ' KB',
+            'type' => mime_content_type($fullPath),
+            'date' => date('Y-m-d H:i:s', filemtime($fullPath))
+        ];
     }
 
     // Sort by most recent first
     usort($existingImages, function($a, $b) {
         return strtotime($b['date']) - strtotime($a['date']);
     });
+}
+
+// Check for URL parameters (for redirects after form submission)
+if (isset($_GET['success'])) {
+    $successMessage = $_GET['success'];
+}
+if (isset($_GET['error'])) {
+    $errorMessage = $_GET['error'];
 }
 
 // Check for session messages
@@ -609,7 +585,7 @@ if (isset($_SESSION['error'])) {
             opacity: 1;
         }
 
-        .btn-delete, .btn-replace {
+        .btn-delete {
             background: rgba(255,255,255,0.8);
             color: #333;
             border: none;
@@ -626,11 +602,6 @@ if (isset($_SESSION['error'])) {
 
         .btn-delete:hover {
             background: rgba(220, 53, 69, 0.8);
-            color: white;
-        }
-
-        .btn-replace:hover {
-            background: rgba(33, 150, 243, 0.8);
             color: white;
         }
 
@@ -756,8 +727,15 @@ if (isset($_SESSION['error'])) {
             </div>
         <?php endif; ?>
 
+        <?php if ($successMessage): ?>
+            <div class="alert alert-success alert-dismissible fade show" role="alert">
+                <?php echo htmlspecialchars($successMessage); ?>
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            </div>
+        <?php endif; ?>
+
         <div class="alert alert-info alert-dismissible fade show" role="alert">
-            <i class="bi bi-info-circle me-2"></i> <strong>Tip:</strong> Hover over images to see delete and replace options.
+            <i class="bi bi-info-circle me-2"></i> <strong>Tip:</strong> You can upload multiple images at once, and delete images by hovering over them and clicking the trash icon.
             <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
         </div>
 
@@ -876,16 +854,17 @@ if (isset($_SESSION['error'])) {
                                             <div><?php echo htmlspecialchars($image['name']); ?></div>
                                             <div><?php echo htmlspecialchars($image['size']); ?></div>
                                         </div>
-                                        <button class="copy-path" data-path="<?php echo htmlspecialchars($image['path']); ?>" title="Copy path">
+                                        <button class="copy-path" data-path="<?php echo htmlspecialchars($image['real_path']); ?>" title="Copy path">
                                             <i class="bi bi-clipboard"></i>
                                         </button>
                                         <div class="image-actions">
-                                            <button type="button" class="btn-delete" data-bs-toggle="modal" data-bs-target="#deleteImageModal" data-image="<?php echo htmlspecialchars($image['path']); ?>" title="Delete image">
-                                                <i class="bi bi-trash"></i>
-                                            </button>
-                                            <button type="button" class="btn-replace" data-bs-toggle="modal" data-bs-target="#replaceImageModal" data-image="<?php echo htmlspecialchars($image['path']); ?>" data-name="<?php echo htmlspecialchars($image['name']); ?>" title="Replace image">
-                                                <i class="bi bi-arrow-repeat"></i>
-                                            </button>
+                                            <form method="POST" action="bulk_image_upload.php" style="display:inline;">
+                                                <input type="hidden" name="action" value="delete">
+                                                <input type="hidden" name="image" value="<?php echo htmlspecialchars($image['real_path']); ?>">
+                                                <button type="submit" class="btn-delete" onclick="return confirm('Are you sure you want to delete this image?');" title="Delete image">
+                                                    <i class="bi bi-trash"></i>
+                                                </button>
+                                            </form>
                                         </div>
                                     </div>
                                 <?php endforeach; ?>
@@ -962,59 +941,6 @@ if (isset($_SESSION['error'])) {
                 <i class="bi bi-check-circle me-2"></i> Image path copied to clipboard!
             </div>
             <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
-        </div>
-    </div>
-</div>
-
-<!-- Delete Image Modal -->
-<div class="modal fade" id="deleteImageModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">Delete Image</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <form method="POST">
-                <div class="modal-body text-center">
-                    <input type="hidden" name="action" value="delete">
-                    <input type="hidden" name="image" id="deleteImagePath">
-                    <i class="bi bi-exclamation-triangle text-warning" style="font-size: 3rem;"></i>
-                    <h5 class="mt-3">Are you sure you want to delete this image?</h5>
-                    <p class="text-muted">This action cannot be undone. Products using this image will have broken image links.</p>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="submit" class="btn btn-danger">Delete</button>
-                </div>
-            </form>
-        </div>
-    </div>
-</div>
-
-<!-- Replace Image Modal -->
-<div class="modal fade" id="replaceImageModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">Replace Image</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <form method="POST" enctype="multipart/form-data">
-                <div class="modal-body">
-                    <input type="hidden" name="action" value="replace">
-                    <input type="hidden" name="old_image" id="replaceImagePath">
-                    <p>You are replacing: <strong id="replaceImageName"></strong></p>
-                    <p class="text-muted">The new image will maintain the same filename to preserve links from products.</p>
-                    <div class="mb-3">
-                        <label for="newImageInput" class="form-label">Select New Image</label>
-                        <input type="file" class="form-control" id="newImageInput" name="new_image" accept="image/*" required>
-                    </div>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="submit" class="btn btn-primary">Replace Image</button>
-                </div>
-            </form>
         </div>
     </div>
 </div>
@@ -1110,8 +1036,8 @@ if (isset($_SESSION['error'])) {
         fileInput.dispatchEvent(event);
     }
 
-    // Form submission and progress simulation
-    document.querySelector('form').addEventListener('submit', function() {
+    // Form submission and progress simulation (for upload only)
+    document.querySelector('form[action=""]').addEventListener('submit', function() {
         if (fileInput.files.length > 0) {
             uploadProgress.classList.remove('d-none');
             uploadButton.disabled = true;
@@ -1132,28 +1058,14 @@ if (isset($_SESSION['error'])) {
 
     // Copy path functionality
     document.querySelectorAll('.copy-btn, .copy-path').forEach(button => {
-        button.addEventListener('click', function() {
+        button.addEventListener('click', function(e) {
+            e.stopPropagation(); // Prevent event from bubbling up
             const path = this.getAttribute('data-path');
             navigator.clipboard.writeText(path).then(() => {
                 const toast = new bootstrap.Toast(document.getElementById('copyToast'));
                 toast.show();
             });
         });
-    });
-
-    // Delete and Replace Image modals
-    document.getElementById('deleteImageModal').addEventListener('show.bs.modal', function (event) {
-        const button = event.relatedTarget;
-        const imagePath = button.getAttribute('data-image');
-        document.getElementById('deleteImagePath').value = imagePath;
-    });
-
-    document.getElementById('replaceImageModal').addEventListener('show.bs.modal', function (event) {
-        const button = event.relatedTarget;
-        const imagePath = button.getAttribute('data-image');
-        const imageName = button.getAttribute('data-name');
-        document.getElementById('replaceImagePath').value = imagePath;
-        document.getElementById('replaceImageName').textContent = imageName;
     });
 
     // Responsive sidebar toggle
