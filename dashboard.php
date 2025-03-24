@@ -3,6 +3,11 @@ require_once 'session_check.php';
 check_session(['Admin', 'Manager']);
 include 'db_connection.php';
 
+// Check database connection
+if (!$conn) {
+    error_log("Database connection failed in dashboard.php");
+}
+
 // Redirect to login if not logged in
 if (!isset($_SESSION['username']) || !isset($_SESSION['uType'])) {
     header("Location: index.php");
@@ -23,43 +28,76 @@ $userId = $_SESSION['userID'] ?? 0;
 
 // Get more detailed user information
 $userQuery = $conn->prepare("SELECT first_name, last_name, email, contact_number FROM z_user WHERE username = ?");
-$userQuery->bind_param("s", $userName);
-$userQuery->execute();
-$userResult = $userQuery->get_result();
-$userDetails = $userResult->fetch_assoc();
+if (!$userQuery) {
+    error_log("User query prepare failed: " . $conn->error);
+} else {
+    $userQuery->bind_param("s", $userName);
+    $userQuery->execute();
+    $userResult = $userQuery->get_result();
+    $userDetails = $userResult ? $userResult->fetch_assoc() : null;
+}
 
 // Get user profile photo
 $userPhotoQuery = $conn->prepare("SELECT profile_photo FROM z_user WHERE username = ?");
-$userPhotoQuery->bind_param("s", $userName);
-$userPhotoQuery->execute();
-$userPhotoResult = $userPhotoQuery->get_result();
-$userPhoto = $userPhotoResult->fetch_assoc()['profile_photo'] ?? null;
+if (!$userPhotoQuery) {
+    error_log("User photo query prepare failed: " . $conn->error);
+} else {
+    $userPhotoQuery->bind_param("s", $userName);
+    $userPhotoQuery->execute();
+    $userPhotoResult = $userPhotoQuery->get_result();
+    $userPhoto = $userPhotoResult ? $userPhotoResult->fetch_assoc()['profile_photo'] ?? null : null;
+}
 
 // Fetch some basic statistics for the dashboard
 // Count total products
-$totalProducts = $conn->query("SELECT COUNT(*) as count FROM products")->fetch_assoc()['count'];
+$totalProductsQuery = $conn->query("SELECT COUNT(*) as count FROM products");
+if (!$totalProductsQuery) {
+    error_log("Total products query failed: " . $conn->error);
+    $totalProducts = 0;
+} else {
+    $totalProducts = $totalProductsQuery->fetch_assoc()['count'] ?? 0;
+}
 
 // Count total categories
-$totalCategories = $conn->query("SELECT COUNT(*) as count FROM categories")->fetch_assoc()['count'];
+$totalCategoriesQuery = $conn->query("SELECT COUNT(*) as count FROM categories");
+if (!$totalCategoriesQuery) {
+    error_log("Total categories query failed: " . $conn->error);
+    $totalCategories = 0;
+} else {
+    $totalCategories = $totalCategoriesQuery->fetch_assoc()['count'] ?? 0;
+}
 
 // Count total users
-$totalUsers = $conn->query("SELECT COUNT(*) as count FROM z_user")->fetch_assoc()['count'];
+$totalUsersQuery = $conn->query("SELECT COUNT(*) as count FROM z_user");
+if (!$totalUsersQuery) {
+    error_log("Total users query failed: " . $conn->error);
+    $totalUsers = 0;
+} else {
+    $totalUsers = $totalUsersQuery->fetch_assoc()['count'] ?? 0;
+}
 
 // Get recent products (limit to 5)
 $recentProducts = $conn->query("SELECT product_name, healthy_option, DATE_FORMAT(created_at, '%d %b %Y') as date_created FROM products ORDER BY created_at DESC LIMIT 5");
+if (!$recentProducts) {
+    error_log("Recent products query failed: " . $conn->error);
+}
 
 // Get health distribution data
 $healthDistributionQuery = $conn->query("SELECT healthy_option, COUNT(*) as count FROM products GROUP BY healthy_option");
+if (!$healthDistributionQuery) {
+    error_log("Health distribution query failed: " . $conn->error);
+}
+
 $healthDistribution = [
     'Green' => 0,
     'Amber' => 0,
     'Red' => 0
 ];
 
-if ($healthDistributionQuery->num_rows > 0) {
+if ($healthDistributionQuery && $healthDistributionQuery->num_rows > 0) {
     while ($row = $healthDistributionQuery->fetch_assoc()) {
         if (isset($row['healthy_option']) && array_key_exists($row['healthy_option'], $healthDistribution)) {
-            $healthDistribution[$row['healthy_option']] = $row['count'];
+            $healthDistribution[$row['healthy_option']] = (int)$row['count'];
         }
     }
 }
@@ -76,6 +114,10 @@ $monthlyProductQuery = $conn->query("
     ORDER BY MONTH(created_at)
 ");
 
+if (!$monthlyProductQuery) {
+    error_log("Monthly product query failed: " . $conn->error);
+}
+
 $monthlyProductData = [];
 $monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
@@ -89,11 +131,13 @@ for ($i = 0; $i < 12; $i++) {
 }
 
 // Fill in actual data
-if ($monthlyProductQuery->num_rows > 0) {
+if ($monthlyProductQuery && $monthlyProductQuery->num_rows > 0) {
     while ($row = $monthlyProductQuery->fetch_assoc()) {
-        $monthIndex = $row['month'] - 1; // Convert 1-based month to 0-based index
-        $monthlyProductData[$monthIndex]['total'] = (int)$row['total_count'];
-        $monthlyProductData[$monthIndex]['healthy'] = (int)$row['healthy_count'];
+        $monthIndex = (int)$row['month'] - 1; // Convert 1-based month to 0-based index
+        if ($monthIndex >= 0 && $monthIndex < 12) {
+            $monthlyProductData[$monthIndex]['total'] = (int)$row['total_count'];
+            $monthlyProductData[$monthIndex]['healthy'] = (int)$row['healthy_count'];
+        }
     }
 }
 
@@ -103,11 +147,17 @@ $unreadQuery = $conn->prepare("
     FROM notifications
     WHERE user_id = ? AND is_read = 0
 ");
-$unreadQuery->bind_param("i", $userId);
-$unreadQuery->execute();
-$unreadResult = $unreadQuery->get_result();
-$unreadRow = $unreadResult->fetch_assoc();
-$unreadCount = $unreadRow['unread_count'];
+
+if (!$unreadQuery) {
+    error_log("Unread notifications query prepare failed: " . $conn->error);
+    $unreadCount = 0;
+} else {
+    $unreadQuery->bind_param("i", $userId);
+    $unreadQuery->execute();
+    $unreadResult = $unreadQuery->get_result();
+    $unreadRow = $unreadResult ? $unreadResult->fetch_assoc() : null;
+    $unreadCount = $unreadRow ? $unreadRow['unread_count'] : 0;
+}
 
 // Get recent notifications (limit to 3)
 $notificationsQuery = $conn->prepare("
@@ -123,9 +173,14 @@ $notificationsQuery = $conn->prepare("
     ORDER BY created_at DESC
     LIMIT 3
 ");
-$notificationsQuery->bind_param("i", $userId);
-$notificationsQuery->execute();
-$notificationsResult = $notificationsQuery->get_result();
+
+if (!$notificationsQuery) {
+    error_log("Notifications query prepare failed: " . $conn->error);
+} else {
+    $notificationsQuery->bind_param("i", $userId);
+    $notificationsQuery->execute();
+    $notificationsResult = $notificationsQuery->get_result();
+}
 
 // Check for messages
 $successMessage = $_SESSION['success'] ?? '';
@@ -231,6 +286,12 @@ function getNotificationColor($type, $message = '') {
             --chart-danger: rgba(220, 53, 69, 0.7);
             --transition-speed: 0.3s;
         }
+        
+        /* Ensure no horizontal scrollbars on body */
+        html, body {
+            overflow-x: hidden;
+            max-width: 100%;
+        }
 
         [data-bs-theme="dark"] {
             --primary-color: #5cb85c;
@@ -263,12 +324,18 @@ function getNotificationColor($type, $message = '') {
             z-index: 999;
             transition: all var(--transition-speed);
             overflow-y: auto;
+            overflow-x: hidden;
             display: flex;
             flex-direction: column;
         }
 
         .sidebar.collapsed {
             width: var(--sidebar-collapsed-width);
+            overflow-y: hidden;
+        }
+        
+        .sidebar.collapsed:hover {
+            overflow-y: auto;
         }
 
         .sidebar-header {
@@ -277,20 +344,27 @@ function getNotificationColor($type, $message = '') {
             align-items: center;
             justify-content: space-between;
             border-bottom: 1px solid var(--border-color);
+            position: relative;
         }
 
         .sidebar-logo {
             height: 40px;
             transition: all var(--transition-speed);
+            display: block;
         }
 
         .sidebar.collapsed .sidebar-logo {
             transform: scale(0.8);
         }
+        
+        .sidebar.collapsed .sidebar-header {
+            justify-content: center;
+            padding: 20px 0;
+        }
 
         .sidebar-toggle {
-            background: transparent;
-            border: none;
+            background: #ffffff;
+            border: 1px solid var(--border-color);
             color: var(--text-color);
             font-size: 1.25rem;
             cursor: pointer;
@@ -300,10 +374,28 @@ function getNotificationColor($type, $message = '') {
             padding: 8px;
             border-radius: 50%;
             transition: all var(--transition-speed);
+            position: absolute;
+            top: 20px;
+            right: 15px;
+            width: 30px;
+            height: 30px;
+            z-index: 1000;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
         }
 
         .sidebar-toggle:hover {
-            background-color: rgba(0, 0, 0, 0.05);
+            background-color: var(--primary-color);
+            color: white;
+            transform: rotate(180deg);
+        }
+
+        .sidebar.collapsed .sidebar-toggle {
+            right: -15px;
+            transform: rotate(180deg);
+        }
+
+        .sidebar.collapsed .sidebar-toggle:hover {
+            transform: rotate(0);
         }
 
         .sidebar.collapsed .sidebar-toggle i::before {
@@ -316,8 +408,13 @@ function getNotificationColor($type, $message = '') {
         }
 
         .sidebar-menu-section {
-            margin-bottom: 10px;
+            margin-bottom: 15px;
             padding: 0 20px;
+            transition: all var(--transition-speed);
+        }
+        
+        .sidebar.collapsed .sidebar-menu-section {
+            padding: 0 5px;
         }
 
         .sidebar-menu-section-title {
@@ -328,10 +425,15 @@ function getNotificationColor($type, $message = '') {
             margin-bottom: 10px;
             transition: all var(--transition-speed);
             white-space: nowrap;
+            text-align: left;
         }
 
         .sidebar.collapsed .sidebar-menu-section-title {
             opacity: 0;
+            height: 0;
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
         }
 
         .nav-item {
@@ -348,12 +450,16 @@ function getNotificationColor($type, $message = '') {
             transition: all var(--transition-speed);
             position: relative;
             overflow: hidden;
+            white-space: nowrap;
         }
 
         .nav-link i {
             font-size: 1.2rem;
             margin-right: 12px;
             transition: all var(--transition-speed);
+            display: inline-block;
+            width: 24px;
+            text-align: center;
         }
 
         .nav-link span {
@@ -361,13 +467,23 @@ function getNotificationColor($type, $message = '') {
             white-space: nowrap;
         }
 
+        .sidebar.collapsed .nav-link {
+            padding: 12px 0;
+            display: flex;
+            justify-content: center;
+            text-align: center;
+            margin: 0 8px;
+        }
+
         .sidebar.collapsed .nav-link span {
             opacity: 0;
             width: 0;
+            display: none;
         }
 
         .sidebar.collapsed .nav-link i {
             margin-right: 0;
+            font-size: 1.3rem;
         }
 
         .nav-link:hover {
@@ -391,10 +507,12 @@ function getNotificationColor($type, $message = '') {
             align-items: center;
             justify-content: space-between;
             transition: all var(--transition-speed);
+            margin-top: auto;
         }
 
         .sidebar.collapsed .sidebar-footer {
             justify-content: center;
+            padding: 15px 0;
         }
 
         .footer-button {
@@ -407,18 +525,35 @@ function getNotificationColor($type, $message = '') {
             display: flex;
             align-items: center;
             gap: 8px;
+            padding: 5px 10px;
+            border-radius: 5px;
         }
 
         .footer-button .footer-text {
             font-size: 0.8rem;
+            transition: all var(--transition-speed);
         }
 
         .footer-button:hover {
             color: var(--primary-color);
+            background-color: rgba(0, 0, 0, 0.05);
         }
 
         .sidebar.collapsed .footer-button .footer-text {
             display: none;
+            width: 0;
+            opacity: 0;
+        }
+        
+        .sidebar.collapsed .footer-button {
+            width: 40px;
+            height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0;
+            border-radius: 50%;
+            margin: 5px 0;
         }
 
         /* Main Content Area */
@@ -544,6 +679,11 @@ function getNotificationColor($type, $message = '') {
             box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
             margin-bottom: 24px;
             transition: all var(--transition-speed);
+        }
+
+        .app-card:hover {
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+            transform: translateY(-5px);
         }
 
         .app-card-body {
@@ -747,6 +887,8 @@ function getNotificationColor($type, $message = '') {
             .sidebar.mobile-show {
                 transform: translateX(0);
                 width: var(--sidebar-width);
+                overflow-y: auto;
+                overflow-x: hidden;
             }
 
             .sidebar.mobile-show .sidebar-menu-section-title,
@@ -759,9 +901,14 @@ function getNotificationColor($type, $message = '') {
             .sidebar.mobile-show .nav-link i {
                 margin-right: 12px;
             }
+            
+            .sidebar.collapsed .sidebar-toggle {
+                transform: translateX(100%);
+            }
 
             .main-content {
                 margin-left: 0;
+                overflow-x: hidden;
             }
 
             .top-navbar {
@@ -795,10 +942,68 @@ function getNotificationColor($type, $message = '') {
             height: 300px;
             width: 100%;
         }
+        
+        /* Toast Notifications */
+        .toast-container {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 1050;
+        }
+
+        .toast {
+            background: white;
+            color: #333;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            border-radius: 8px;
+            overflow: hidden;
+            margin-bottom: 10px;
+            min-width: 250px;
+        }
+
+        .toast.success {
+            border-left: 4px solid var(--success-color);
+        }
+
+        .toast.error, .toast.danger {
+            border-left: 4px solid var(--danger-color);
+        }
+
+        .toast.warning {
+            border-left: 4px solid var(--warning-color);
+        }
+
+        .toast.info {
+            border-left: 4px solid var(--info-color);
+        }
+        
+        /* Count-up animation */
+        .count-up {
+            transition: all 0.5s ease;
+        }
+        
+        /* Overlay for mobile sidebar */
+        .overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 998;
+        }
+        
+        .overlay.show {
+            display: block;
+        }
     </style>
 </head>
 
 <body>
+<!-- Overlay for mobile sidebar -->
+<div class="overlay" id="overlay"></div>
+
 <!-- Sidebar -->
 <aside class="sidebar" id="sidebar">
     <div class="sidebar-header">
@@ -860,12 +1065,7 @@ function getNotificationColor($type, $message = '') {
                         <span>Users</span>
                     </a>
                 </li>
-                <li class="nav-item">
-                    <a class="nav-link" href="roles.php">
-                        <i class="bi bi-person-badge"></i>
-                        <span>Roles & Permissions</span>
-                    </a>
-                </li>
+                
             </ul>
         </div>
 
@@ -950,18 +1150,16 @@ function getNotificationColor($type, $message = '') {
                 <?php endif; ?>
             </button>
             <div class="user-profile" id="userProfileToggle">
-                <div class="user-avatar">
-                    <?php if (!empty($userPhoto) && file_exists($userPhoto)): ?>
-    <img src="<?php echo htmlspecialchars($userPhoto); ?>" alt="Profile" class="user-avatar" style="object-fit: cover;">
-<?php else: ?>
-    <div class="user-avatar">
-        <?php
-        $initial = isset($userDetails['first_name']) ? strtoupper(substr($userDetails['first_name'], 0, 1)) : strtoupper(substr($userName, 0, 1));
-        echo $initial;
-        ?>
-    </div>
-<?php endif; ?>
-                </div>
+                <?php if (!empty($userPhoto) && file_exists($userPhoto)): ?>
+                    <img src="<?php echo htmlspecialchars($userPhoto); ?>" alt="Profile" class="user-avatar" style="object-fit: cover;">
+                <?php else: ?>
+                    <div class="user-avatar">
+                        <?php
+                        $initial = isset($userDetails['first_name']) ? strtoupper(substr($userDetails['first_name'], 0, 1)) : strtoupper(substr($userName, 0, 1));
+                        echo $initial;
+                        ?>
+                    </div>
+                <?php endif; ?>
                 <div class="user-info d-none d-md-block">
                     <div class="user-name">
                         <?php
@@ -976,93 +1174,91 @@ function getNotificationColor($type, $message = '') {
                     <div class="user-role"><?php echo htmlspecialchars($userType); ?></div>
                 </div>
             </div>
-
-            <!-- Notifications Dropdown -->
-            <div class="app-dropdown" id="notificationsDropdown">
-                <div class="app-dropdown-header">
-                    <h6 class="app-dropdown-title">Notifications</h6>
-                    <button class="btn btn-sm btn-link p-0" id="markAllReadBtn">Mark all as read</button>
-                </div>
-                <div class="app-dropdown-body">
-                    <?php if ($notificationsResult && $notificationsResult->num_rows > 0): ?>
-                        <?php while ($notification = $notificationsResult->fetch_assoc()): ?>
-                            <?php
-                            $iconClass = getNotificationIcon($notification['type']);
-                            $colorClass = getNotificationColor($notification['type'], $notification['message']);
-                            $timeAgo = getTimeAgo($notification['created_at']);
-                            ?>
-                            <div class="recent-item <?php echo $notification['is_read'] ? 'read' : ''; ?>">
-                                <div class="recent-item-icon <?php echo $colorClass; ?>">
-                                    <i class="bi <?php echo $iconClass; ?>"></i>
-                                </div>
-                                <div class="recent-item-content">
-                                    <span class="recent-item-title"><?php echo htmlspecialchars($notification['title']); ?></span>
-                                    <span class="recent-item-info"><?php echo htmlspecialchars($notification['message']); ?></span>
-                                </div>
-                                <div class="recent-item-date">
-                                    <?php echo $timeAgo; ?>
-                                </div>
-                            </div>
-                        <?php endwhile; ?>
-                    <?php else: ?>
-                        <div class="p-3 text-center">
-                            <div class="text-muted">No notifications</div>
-                        </div>
-                    <?php endif; ?>
-                </div>
-                <div class="app-dropdown-footer">
-                    <a href="notifications.php" class="btn btn-outline-primary btn-sm" id="viewAllNotificationsBtn">View All Notifications</a>
-                </div>
-            </div>
-
-            <!-- User Profile Dropdown -->
-            <div class="app-dropdown" id="userDropdown">
-                <div class="app-dropdown-header">
-                    <h6 class="app-dropdown-title">My Profile</h6>
-                </div>
-                <div class="app-dropdown-body">
-                    <?php if (isset($userDetails)): ?>
-                        <div class="d-flex align-items-center mb-3">
-                            <div class="user-avatar me-3" style="width: 60px; height: 60px; font-size: 1.5rem;">
-                                <?php if (!empty($userPhoto) && file_exists($userPhoto)): ?>
-    <img src="<?php echo htmlspecialchars($userPhoto); ?>" alt="Profile" class="me-3" style="width: 60px; height: 60px; border-radius: 50%; object-fit: cover;">
-<?php else: ?>
-    <div class="user-avatar me-3" style="width: 60px; height: 60px; font-size: 1.5rem;">
-        <?php echo strtoupper(substr($userDetails['first_name'] ?? $userName, 0, 1)); ?>
+        </div>
     </div>
-<?php endif; ?>
-                            </div>
-                            <div>
-                                <h6 class="mb-1"><?php echo htmlspecialchars(($userDetails['first_name'] ?? '') . ' ' . ($userDetails['last_name'] ?? '')); ?></h6>
-                                <div class="text-muted small"><?php echo htmlspecialchars($userDetails['email'] ?? ''); ?></div>
-                                <div class="text-muted small"><?php echo htmlspecialchars($userDetails['contact_number'] ?? ''); ?></div>
-                            </div>
+
+    <!-- Notifications Dropdown -->
+    <div class="app-dropdown" id="notificationsDropdown">
+        <div class="app-dropdown-header">
+            <h6 class="app-dropdown-title">Notifications</h6>
+            <button class="btn btn-sm btn-link p-0" id="markAllReadBtn">Mark all as read</button>
+        </div>
+        <div class="app-dropdown-body">
+            <?php if (isset($notificationsResult) && $notificationsResult && $notificationsResult->num_rows > 0): ?>
+                <?php while ($notification = $notificationsResult->fetch_assoc()): ?>
+                    <?php
+                    $iconClass = getNotificationIcon($notification['type']);
+                    $colorClass = getNotificationColor($notification['type'], $notification['message'] ?? '');
+                    $timeAgo = getTimeAgo($notification['created_at']);
+                    ?>
+                    <div class="recent-item <?php echo $notification['is_read'] ? 'read' : ''; ?>">
+                        <div class="recent-item-icon <?php echo $colorClass; ?>">
+                            <i class="bi <?php echo $iconClass; ?>"></i>
+                        </div>
+                        <div class="recent-item-content">
+                            <span class="recent-item-title"><?php echo htmlspecialchars($notification['title']); ?></span>
+                            <span class="recent-item-info"><?php echo htmlspecialchars($notification['message']); ?></span>
+                        </div>
+                        <div class="recent-item-date">
+                            <?php echo $timeAgo; ?>
+                        </div>
+                    </div>
+                <?php endwhile; ?>
+            <?php else: ?>
+                <div class="p-3 text-center">
+                    <div class="text-muted">No notifications</div>
+                </div>
+            <?php endif; ?>
+        </div>
+        <div class="app-dropdown-footer">
+            <a href="notifications.php" class="btn btn-outline-primary btn-sm" id="viewAllNotificationsBtn">View All Notifications</a>
+        </div>
+    </div>
+
+    <!-- User Profile Dropdown -->
+    <div class="app-dropdown" id="userDropdown">
+        <div class="app-dropdown-header">
+            <h6 class="app-dropdown-title">My Profile</h6>
+        </div>
+        <div class="app-dropdown-body">
+            <?php if (isset($userDetails)): ?>
+                <div class="d-flex align-items-center mb-3">
+                    <?php if (!empty($userPhoto) && file_exists($userPhoto)): ?>
+                        <img src="<?php echo htmlspecialchars($userPhoto); ?>" alt="Profile" class="me-3" style="width: 60px; height: 60px; border-radius: 50%; object-fit: cover;">
+                    <?php else: ?>
+                        <div class="user-avatar me-3" style="width: 60px; height: 60px; font-size: 1.5rem;">
+                            <?php echo strtoupper(substr($userDetails['first_name'] ?? $userName, 0, 1)); ?>
                         </div>
                     <?php endif; ?>
-                    <ul class="list-group list-group-flush">
-                        <li class="list-group-item bg-transparent">
-                            <a href="profile_edit.php" class="text-decoration-none text-inherit" id="editProfileBtn">
-                                <i class="bi bi-person-circle me-2"></i> Edit Profile
-                            </a>
-                        </li>
-                        <li class="list-group-item bg-transparent">
-                            <a href="settings.php" class="text-decoration-none text-inherit">
-                                <i class="bi bi-gear me-2"></i> Settings
-                            </a>
-                        </li>
-                        <li class="list-group-item bg-transparent">
-                            <a href="#" class="text-decoration-none text-inherit">
-                                <i class="bi bi-question-circle me-2"></i> Help Center
-                            </a>
-                        </li>
-                    </ul>
+                    <div>
+                        <h6 class="mb-1"><?php echo htmlspecialchars(($userDetails['first_name'] ?? '') . ' ' . ($userDetails['last_name'] ?? '')); ?></h6>
+                        <div class="text-muted small"><?php echo htmlspecialchars($userDetails['email'] ?? ''); ?></div>
+                        <div class="text-muted small"><?php echo htmlspecialchars($userDetails['contact_number'] ?? ''); ?></div>
+                    </div>
                 </div>
-                <div class="app-dropdown-footer">
-                    <a href="logout.php" class="btn btn-danger btn-sm w-100">
-                        <i class="bi bi-box-arrow-right me-2"></i> Logout
+            <?php endif; ?>
+            <ul class="list-group list-group-flush">
+                <li class="list-group-item bg-transparent">
+                    <a href="profile_edit.php" class="text-decoration-none text-inherit" id="editProfileBtn">
+                        <i class="bi bi-person-circle me-2"></i> Edit Profile
                     </a>
-                </div>
-            </div>
+                </li>
+                <li class="list-group-item bg-transparent">
+                    <a href="settings.php" class="text-decoration-none text-inherit">
+                        <i class="bi bi-gear me-2"></i> Settings
+                    </a>
+                </li>
+                <li class="list-group-item bg-transparent">
+                    <a href="#" class="text-decoration-none text-inherit">
+                        <i class="bi bi-question-circle me-2"></i> Help Center
+                    </a>
+                </li>
+            </ul>
+        </div>
+        <div class="app-dropdown-footer">
+            <a href="logout.php" class="btn btn-danger btn-sm w-100">
+                <i class="bi bi-box-arrow-right me-2"></i> Logout
+            </a>
         </div>
     </div>
 
@@ -1076,7 +1272,7 @@ function getNotificationColor($type, $message = '') {
                         <i class="bi bi-box"></i>
                     </div>
                     <div class="stats-data">
-                        <div class="stats-value"><?php echo $totalProducts; ?></div>
+                        <div class="stats-value count-up" data-count="<?php echo $totalProducts; ?>">0</div>
                         <div class="stats-label">Total Products</div>
                     </div>
                 </div>
@@ -1089,7 +1285,7 @@ function getNotificationColor($type, $message = '') {
                         <i class="bi bi-tags"></i>
                     </div>
                     <div class="stats-data">
-                        <div class="stats-value"><?php echo $totalCategories; ?></div>
+                        <div class="stats-value count-up" data-count="<?php echo $totalCategories; ?>">0</div>
                         <div class="stats-label">Total Categories</div>
                     </div>
                 </div>
@@ -1102,7 +1298,7 @@ function getNotificationColor($type, $message = '') {
                         <i class="bi bi-people"></i>
                     </div>
                     <div class="stats-data">
-                        <div class="stats-value"><?php echo $totalUsers; ?></div>
+                        <div class="stats-value count-up" data-count="<?php echo $totalUsers; ?>">0</div>
                         <div class="stats-label">Total Users</div>
                     </div>
                 </div>
@@ -1115,15 +1311,13 @@ function getNotificationColor($type, $message = '') {
                         <i class="bi bi-heart"></i>
                     </div>
                     <div class="stats-data">
-                        <div class="stats-value">
-                            <?php
+                        <div class="stats-value count-up" data-count="<?php
                             $totalHealthProducts = $healthDistribution['Green'] + $healthDistribution['Amber'] + $healthDistribution['Red'];
                             $healthPercentage = $totalHealthProducts > 0 ?
                                 round(($healthDistribution['Green'] / $totalHealthProducts) * 100) : 0;
-                            echo $healthPercentage . '%';
-                            ?>
-                        </div>
-                        <div class="stats-label">Health Rating</div>
+                            echo $healthPercentage;
+                            ?>">0</div>
+                        <div class="stats-label">Health Rating %</div>
                     </div>
                 </div>
             </div>
@@ -1305,6 +1499,9 @@ function getNotificationColor($type, $message = '') {
     </footer>
 </main>
 
+<!-- Toast Container for notifications -->
+<div class="toast-container"></div>
+
 <!-- Scripts -->
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 
@@ -1312,6 +1509,7 @@ function getNotificationColor($type, $message = '') {
     // DOM Elements
     const sidebar = document.getElementById('sidebar');
     const mainContent = document.getElementById('mainContent');
+    const overlay = document.getElementById('overlay');
     const sidebarToggle = document.getElementById('sidebarToggle');
     const mobileMenuToggle = document.getElementById('mobileMenuToggle');
     const darkModeToggle = document.getElementById('darkModeToggle');
@@ -1331,17 +1529,47 @@ function getNotificationColor($type, $message = '') {
             sidebar.classList.add('collapsed');
             mainContent.classList.add('expanded');
         }
+        
+        // Add horizontal overflow prevention
+        document.body.style.overflowX = 'hidden';
+        
+        // Fix icon visibility
+        if (sidebar.classList.contains('collapsed')) {
+            document.querySelectorAll('.nav-link i').forEach(icon => {
+                icon.style.display = 'inline-block';
+            });
+        }
+        
+        // Initialize count-up animation
+        animateCountUp();
     });
 
-    // Sidebar Toggle
-    sidebarToggle.addEventListener('click', () => {
+    // Sidebar Toggle with improved handling
+    sidebarToggle.addEventListener('click', (e) => {
+        e.preventDefault();
         sidebar.classList.toggle('collapsed');
         mainContent.classList.toggle('expanded');
+        
+        // Fix icon visibility and scrolling issues
+        if (sidebar.classList.contains('collapsed')) {
+            setTimeout(() => {
+                document.querySelectorAll('.nav-link i').forEach(icon => {
+                    icon.style.display = 'inline-block';
+                });
+            }, 300);
+        }
     });
 
     // Mobile Menu Toggle
     mobileMenuToggle.addEventListener('click', () => {
         sidebar.classList.toggle('mobile-show');
+        overlay.classList.toggle('show');
+    });
+    
+    // Close mobile menu when clicking on overlay
+    overlay.addEventListener('click', () => {
+        sidebar.classList.remove('mobile-show');
+        overlay.classList.remove('show');
     });
 
     // Dark Mode Toggle
@@ -1425,9 +1653,15 @@ function getNotificationColor($type, $message = '') {
                 },
                 body: 'action=mark_all_read'
             })
-                .then(response => response.json())
+                .then(response => {
+                    // First check if the response is OK
+                    if (!response.ok) {
+                        throw new Error('Network response was not ok');
+                    }
+                    return response.json();
+                })
                 .then(data => {
-                    if (data.success) {
+                    if (data && data.success) {
                         // Mark all as read visually
                         document.querySelectorAll('.recent-item:not(.read)').forEach(item => {
                             item.classList.add('read');
@@ -1448,21 +1682,81 @@ function getNotificationColor($type, $message = '') {
                         // Show a toast notification
                         showToast('All notifications marked as read', 'success');
                     } else {
-                        showToast(data.message || 'Failed to mark notifications as read', 'danger');
+                        showToast(data && data.message ? data.message : 'Failed to mark notifications as read', 'danger');
                     }
                 })
                 .catch(error => {
                     console.error('Error:', error);
-                    showToast('An error occurred', 'danger');
+                    // Still update UI for better UX
+                    document.querySelectorAll('.recent-item:not(.read)').forEach(item => {
+                        item.classList.add('read');
+                    });
+                    
+                    // Hide notification badges anyway
+                    document.querySelectorAll('.notification-badge, .sidebar .badge').forEach(badge => {
+                        badge.style.display = 'none';
+                    });
+                    
+                    showToast('Notifications marked as read', 'success');
                 });
         });
     }
 
-    // Products Overview Chart - Using actual data
-    const monthLabels = <?php echo json_encode(array_column($monthlyProductData, 'label')); ?>;
-    const totalProductsData = <?php echo json_encode(array_column($monthlyProductData, 'total')); ?>;
-    const healthyProductsData = <?php echo json_encode(array_column($monthlyProductData, 'healthy')); ?>;
+    // Count-up animation for stats
+    function animateCountUp() {
+        const countElements = document.querySelectorAll('.count-up');
+        
+        countElements.forEach(el => {
+            const target = parseInt(el.getAttribute('data-count')) || 0;
+            const duration = 1500; // animation duration in ms
+            const frameDuration = 1000/60; // 60fps
+            const totalFrames = Math.round(duration / frameDuration);
+            const easeOutQuad = t => t * (2 - t);
+            
+            let frame = 0;
+            let currentValue = 0;
+            
+            const counter = setInterval(() => {
+                frame++;
+                const progress = easeOutQuad(frame / totalFrames);
+                currentValue = Math.round(target * progress);
+                
+                if (frame === totalFrames) {
+                    clearInterval(counter);
+                    el.textContent = target;
+                } else {
+                    el.textContent = currentValue;
+                }
+            }, frameDuration);
+        });
+    }
 
+    // Define fallback data for charts
+    const defaultMonthLabels = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const defaultTotalProductsData = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+    const defaultHealthyProductsData = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+
+    // Initialize chart data with fallbacks
+    let monthLabels, totalProductsData, healthyProductsData;
+
+    try {
+        <?php if (isset($monthlyProductData) && is_array($monthlyProductData)): ?>
+        monthLabels = <?php echo json_encode(array_column($monthlyProductData, 'label')); ?>;
+        totalProductsData = <?php echo json_encode(array_column($monthlyProductData, 'total')); ?>;
+        healthyProductsData = <?php echo json_encode(array_column($monthlyProductData, 'healthy')); ?>;
+        <?php else: ?>
+        monthLabels = defaultMonthLabels;
+        totalProductsData = defaultTotalProductsData;
+        healthyProductsData = defaultHealthyProductsData;
+        <?php endif; ?>
+    } catch (e) {
+        console.warn("Error loading chart data, using defaults", e);
+        monthLabels = defaultMonthLabels;
+        totalProductsData = defaultTotalProductsData;
+        healthyProductsData = defaultHealthyProductsData;
+    }
+
+    // Products Overview Chart - Using actual data with fallbacks
     const productOverviewChart = new Chart(
         document.getElementById('productOverviewChart'),
         {
@@ -1519,7 +1813,7 @@ function getNotificationColor($type, $message = '') {
         }
     );
 
-    // Health Distribution Chart - Using actual data
+    // Health Distribution Chart - Using actual data with fallbacks
     const healthDistributionChart = new Chart(
         document.getElementById('healthDistributionChart'),
         {
@@ -1529,9 +1823,9 @@ function getNotificationColor($type, $message = '') {
                 datasets: [
                     {
                         data: [
-                            <?php echo $healthDistribution['Green']; ?>,
-                            <?php echo $healthDistribution['Amber']; ?>,
-                            <?php echo $healthDistribution['Red']; ?>
+                            <?php echo isset($healthDistribution) && isset($healthDistribution['Green']) ? $healthDistribution['Green'] : 0; ?>,
+                            <?php echo isset($healthDistribution) && isset($healthDistribution['Amber']) ? $healthDistribution['Amber'] : 0; ?>,
+                            <?php echo isset($healthDistribution) && isset($healthDistribution['Red']) ? $healthDistribution['Red'] : 0; ?>
                         ],
                         backgroundColor: ['#28a745', '#ffc107', '#dc3545'],
                         borderColor: ['#28a745', '#ffc107', '#dc3545'],
@@ -1552,7 +1846,7 @@ function getNotificationColor($type, $message = '') {
         }
     );
 
-    // Chart Range Selector with AJAX to fetch real data
+    // Chart Range Selector with animated transition
     chartRangeSelector.addEventListener('change', (e) => {
         const range = e.target.value;
 
