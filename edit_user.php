@@ -10,7 +10,6 @@ include 'db_connection.php';
 if ($conn->connect_error) {
     die("Connection failed: " . $conn->connect_error);
 }
-file_put_contents('user_debug.log', "Database connection established\n", FILE_APPEND);
 
 // Ensure only Admin & Manager can access
 if (!isset($_SESSION['username']) || ($_SESSION['uType'] !== 'Admin' && $_SESSION['uType'] !== 'Manager')) {
@@ -19,34 +18,49 @@ if (!isset($_SESSION['username']) || ($_SESSION['uType'] !== 'Admin' && $_SESSIO
     exit();
 }
 
-// Function to add notification
-function addNotification($conn, $userId, $type, $title, $message) {
-    $stmt = $conn->prepare("INSERT INTO notifications (user_id, type, title, message, is_read, created_at) VALUES (?, ?, ?, ?, 0, NOW())");
-    $stmt->bind_param("isss", $userId, $type, $title, $message);
-    return $stmt->execute();
-}
-
 // Initialize variables
 $successMessage = '';
 $errorMessage = '';
+$user = [];
 
 // Set active tab for navigation
 $activeTab = 'users';
 
+// Check if user ID is provided
+if (!isset($_GET['id']) || empty($_GET['id'])) {
+    $_SESSION['error'] = "No user specified for editing.";
+    header("Location: users.php");
+    exit();
+}
+
+$user_id = (int) $_GET['id'];
+
+// Fetch user data
+$user_query = "SELECT * FROM z_user WHERE userID = ?";
+$stmt = $conn->prepare($user_query);
+$stmt->bind_param("i", $user_id);
+$stmt->execute();
+$result = $stmt->get_result();
+
+if ($result->num_rows === 0) {
+    $_SESSION['error'] = "User not found.";
+    header("Location: users.php");
+    exit();
+}
+
+$user = $result->fetch_assoc();
+
 // Process form submission
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
-    file_put_contents('user_debug.log', "Form submitted at " . date('Y-m-d H:i:s') . "\n", FILE_APPEND);
-    
     $first_name = trim($_POST['first_name']);
     $last_name = trim($_POST['last_name']);
     $contact_number = trim($_POST['contact_number']);
     $email = trim($_POST['email']);
     $username = trim($_POST['username']);
-    $password = trim($_POST['password']);
     $status = trim($_POST['status']);
     $uType = trim($_POST['uType']);
-    $profile_photo = NULL; // Default to NULL for profile_photo
-
+    $profile_photo = $user['profile_photo']; // Keep existing profile photo by default
+    
     // Handle profile photo upload if provided
     if(isset($_FILES['profile_photo']) && $_FILES['profile_photo']['name'] != "") {
         $upload_dir = "uploads/profiles/";
@@ -64,120 +78,91 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             $target_file = $upload_dir . $new_filename;
             
             if (move_uploaded_file($_FILES['profile_photo']['tmp_name'], $target_file)) {
-                $profile_photo = $target_file; // Save the path to use in DB
-                file_put_contents('user_debug.log', "Profile photo saved to: " . $profile_photo . "\n", FILE_APPEND);
+                // Delete old profile photo if it exists
+                if (!empty($user['profile_photo']) && file_exists($user['profile_photo']) && $user['profile_photo'] != $target_file) {
+                    unlink($user['profile_photo']);
+                }
+                $profile_photo = $target_file;
             } else {
                 $errorMessage = "Failed to upload profile photo.";
-                file_put_contents('user_debug.log', "Failed to upload profile photo\n", FILE_APPEND);
             }
         } else {
             $errorMessage = "Invalid file type for profile photo. Only JPG, JPEG, PNG & GIF files are allowed.";
-            file_put_contents('user_debug.log', "Invalid file type for profile photo\n", FILE_APPEND);
         }
     }
 
-    // Validate Email Format
-    if (!isset($errorMessage) || empty($errorMessage)) { // Only proceed if no error occurred
+    // Validate email format
+    if (!isset($errorMessage) || empty($errorMessage)) {
         if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
             $errorMessage = "Invalid email format! Please enter a valid email address.";
-            file_put_contents('user_debug.log', "Invalid email format: " . $email . "\n", FILE_APPEND);
         } else {
-            // Check if Username or Email Already Exists
-            $check_sql = "SELECT * FROM z_user WHERE email = ? OR username = ?";
+            // Check if Username or Email Already Exists (excluding current user)
+            $check_sql = "SELECT * FROM z_user WHERE (email = ? OR username = ?) AND userID != ?";
             $stmt_check = $conn->prepare($check_sql);
-            
-            if ($stmt_check === false) {
-                $errorMessage = "Prepare statement failed: " . $conn->error;
-                file_put_contents('user_debug.log', "Prepare statement failed: " . $conn->error . "\n", FILE_APPEND);
-            } else {
-                $stmt_check->bind_param("ss", $email, $username);
-                $stmt_check->execute();
-                $result_check = $stmt_check->get_result();
+            $stmt_check->bind_param("ssi", $email, $username, $user_id);
+            $stmt_check->execute();
+            $result_check = $stmt_check->get_result();
 
-                if ($result_check->num_rows > 0) {
-                    $errorMessage = "Email or Username already taken.";
-                    file_put_contents('user_debug.log', "Email or Username already taken\n", FILE_APPEND);
-                } else {
-                    try {
-                        // Hash Password
+            if ($result_check->num_rows > 0) {
+                $errorMessage = "Email or Username already taken by another user.";
+            } else {
+                try {
+                    // Update user information
+                    $update_query = "UPDATE z_user SET 
+                                    first_name = ?, 
+                                    last_name = ?, 
+                                    contact_number = ?, 
+                                    email = ?, 
+                                    username = ?,
+                                    status = ?, 
+                                    uType = ?,
+                                    profile_photo = ?
+                                    WHERE userID = ?";
+                                    
+                    $stmt = $conn->prepare($update_query);
+                    
+                    if ($stmt === false) {
+                        throw new Exception("Prepare failed: " . $conn->error);
+                    }
+                    
+                    $stmt->bind_param("ssssssssi", 
+                        $first_name, 
+                        $last_name, 
+                        $contact_number, 
+                        $email, 
+                        $username, 
+                        $status, 
+                        $uType, 
+                        $profile_photo,
+                        $user_id
+                    );
+                    
+                    // Handle password update if provided
+                    if (!empty($_POST['password'])) {
+                        $password = trim($_POST['password']);
                         $hashed_password = password_hash($password, PASSWORD_BCRYPT);
                         
-                        // Log user data being inserted
-                        $debug_data = "User data: " . $first_name . ", " . $last_name . ", " . $contact_number . 
-                                     ", " . $email . ", " . $username . ", [password_hash], " . 
-                                     $status . ", " . $uType . ", " . ($profile_photo ?? "NULL");
-                        file_put_contents('user_debug.log', $debug_data . "\n", FILE_APPEND);
-
-                        // Insert Data Using Prepared Statement
-                        $sql = "INSERT INTO z_user (first_name, last_name, contact_number, email, username, password, status, uType, profile_photo) 
-                                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
-                        
-                        file_put_contents('user_debug.log', "SQL: " . $sql . "\n", FILE_APPEND);
-                        
-                        $stmt = $conn->prepare($sql);
-                        
-                        if ($stmt === false) {
-                            throw new Exception("Prepare failed: " . $conn->error);
-                        }
-                        
-                        // Explicitly bind each parameter 
-                        $bind_result = $stmt->bind_param("sssssssss",
-                            $first_name,
-                            $last_name,
-                            $contact_number,
-                            $email,
-                            $username,
-                            $hashed_password,
-                            $status,
-                            $uType,
-                            $profile_photo
-                        );
-                        
-                        if ($bind_result === false) {
-                            throw new Exception("Bind_param failed: " . $stmt->error);
-                        }
-                        
-                        file_put_contents('user_debug.log', "About to execute query\n", FILE_APPEND);
-                        $execute_result = $stmt->execute();
-                        
-                        if ($execute_result) {
-
-                         // Add notification for all admin users
-    $adminQuery = "SELECT userID FROM z_user WHERE uType = 'Admin'";
-    $adminResult = $conn->query($adminQuery);
-    
-    if ($adminResult) {
-        while ($admin = $adminResult->fetch_assoc()) {
-            addNotification(
-                $conn, 
-                $admin['userID'], 
-                'user', 
-                'New User Added', 
-                "New user '{$username}' with role '{$uType}' has been added."
-            );
-        }
-    }
-
-                            file_put_contents('user_debug.log', "User added successfully\n", FILE_APPEND);
-                            $successMessage = "User added successfully!";
-                            $_SESSION['success'] = $successMessage;
-                            header("Location: users.php");
-                            exit();
-                        } else {
-                            throw new Exception("Execute failed: " . $stmt->error);
-                        }
-                    } catch (Exception $e) {
-                        $errorMessage = "Database error: " . $e->getMessage();
-                        file_put_contents('user_debug.log', "Exception: " . $errorMessage . "\n", FILE_APPEND);
+                        $password_query = "UPDATE z_user SET password = ? WHERE userID = ?";
+                        $password_stmt = $conn->prepare($password_query);
+                        $password_stmt->bind_param("si", $hashed_password, $user_id);
+                        $password_stmt->execute();
                     }
+                    
+                    if ($stmt->execute()) {
+                        $successMessage = "User updated successfully!";
+                        $_SESSION['success'] = $successMessage;
+                        header("Location: users.php");
+                        exit();
+                    } else {
+                        throw new Exception("Execute failed: " . $stmt->error);
+                    }
+                } catch (Exception $e) {
+                    $errorMessage = "Database error: " . $e->getMessage();
                 }
             }
         }
     }
 }
-
-// Fetch total users count
-$total_users = $conn->query("SELECT COUNT(*) as total FROM z_user")->fetch_assoc()['total'];
 
 // Check for session messages
 if (isset($_SESSION['success'])) {
@@ -195,7 +180,7 @@ if (isset($_SESSION['error'])) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Add User - ZOUKI</title>
+    <title>Edit User - ZOUKI</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.7.2/font/bootstrap-icons.css" rel="stylesheet">
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
@@ -373,6 +358,18 @@ if (isset($_SESSION['error'])) {
                 margin-left: 60px;
             }
         }
+        
+        /* Profile preview */
+        .profile-preview {
+            width: 150px;
+            height: 150px;
+            border-radius: 50%;
+            object-fit: cover;
+            border: 3px solid #e0e0e0;
+            background-color: #f8f9fa;
+            margin: 0 auto 20px;
+            display: block;
+        }
     </style>
 </head>
 <body>
@@ -427,8 +424,7 @@ if (isset($_SESSION['error'])) {
 <!-- Top Navbar -->
 <nav class="top-navbar">
     <div class="d-flex align-items-center">
-        <h4 class="mb-0">User Management</h4>
-        <span class="ms-3 text-muted">Total Users: <?php echo $total_users; ?></span>
+        <h4 class="mb-0">Edit User</h4>
     </div>
     <div class="user-info">
         <span class="user-name"><?php echo htmlspecialchars($_SESSION['username']); ?></span>
@@ -459,23 +455,30 @@ if (isset($_SESSION['error'])) {
             <div class="col-md-8">
                 <div class="card">
                     <div class="card-header">
-                        <h5 class="mb-0">Add New User</h5>
+                        <h5 class="mb-0">Edit User: <?php echo htmlspecialchars($user['username']); ?></h5>
                     </div>
                     <div class="card-body">
-                        <form method="POST" action="<?php echo htmlspecialchars($_SERVER['PHP_SELF']); ?>" id="addUserForm" enctype="multipart/form-data">
-                            <input type="hidden" name="form_submitted" value="1">
-
+                        <form method="POST" action="<?php echo htmlspecialchars($_SERVER['PHP_SELF']) . '?id=' . $user_id; ?>" id="editUserForm" enctype="multipart/form-data">
+                            
+                            <?php if (!empty($user['profile_photo']) && file_exists($user['profile_photo'])): ?>
+                                <img src="<?php echo htmlspecialchars($user['profile_photo']); ?>" alt="Profile Photo" class="profile-preview mb-4">
+                            <?php else: ?>
+                                <div class="profile-preview d-flex align-items-center justify-content-center mb-4">
+                                    <i class="bi bi-person" style="font-size: 3rem; color: #adb5bd;"></i>
+                                </div>
+                            <?php endif; ?>
+                            
                             <div class="row">
                                 <div class="col-md-6">
                                     <div class="mb-3">
                                         <label class="form-label">First Name</label>
-                                        <input type="text" name="first_name" class="form-control" required>
+                                        <input type="text" name="first_name" class="form-control" required value="<?php echo htmlspecialchars($user['first_name']); ?>">
                                     </div>
                                 </div>
                                 <div class="col-md-6">
                                     <div class="mb-3">
                                         <label class="form-label">Last Name</label>
-                                        <input type="text" name="last_name" class="form-control" required>
+                                        <input type="text" name="last_name" class="form-control" required value="<?php echo htmlspecialchars($user['last_name']); ?>">
                                     </div>
                                 </div>
                             </div>
@@ -484,13 +487,13 @@ if (isset($_SESSION['error'])) {
                                 <div class="col-md-6">
                                     <div class="mb-3">
                                         <label class="form-label">Contact Number</label>
-                                        <input type="text" name="contact_number" class="form-control" required>
+                                        <input type="text" name="contact_number" class="form-control" required value="<?php echo htmlspecialchars($user['contact_number']); ?>">
                                     </div>
                                 </div>
                                 <div class="col-md-6">
                                     <div class="mb-3">
                                         <label class="form-label">Email</label>
-                                        <input type="email" name="email" class="form-control" required>
+                                        <input type="email" name="email" class="form-control" required value="<?php echo htmlspecialchars($user['email']); ?>">
                                     </div>
                                 </div>
                             </div>
@@ -499,13 +502,13 @@ if (isset($_SESSION['error'])) {
                                 <div class="col-md-6">
                                     <div class="mb-3">
                                         <label class="form-label">Username</label>
-                                        <input type="text" name="username" class="form-control" required>
+                                        <input type="text" name="username" class="form-control" required value="<?php echo htmlspecialchars($user['username']); ?>">
                                     </div>
                                 </div>
                                 <div class="col-md-6">
                                     <div class="mb-3">
-                                        <label class="form-label">Password</label>
-                                        <input type="password" name="password" class="form-control" required>
+                                        <label class="form-label">Password <small class="text-muted">(Leave empty to keep current)</small></label>
+                                        <input type="password" name="password" class="form-control">
                                     </div>
                                 </div>
                             </div>
@@ -515,8 +518,8 @@ if (isset($_SESSION['error'])) {
                                     <div class="mb-3">
                                         <label class="form-label">Status</label>
                                         <select name="status" class="form-select" required>
-                                            <option value="active">Active</option>
-                                            <option value="inactive">Inactive</option>
+                                            <option value="active" <?php echo $user['status'] === 'active' ? 'selected' : ''; ?>>Active</option>
+                                            <option value="inactive" <?php echo $user['status'] === 'inactive' ? 'selected' : ''; ?>>Inactive</option>
                                         </select>
                                     </div>
                                 </div>
@@ -524,24 +527,26 @@ if (isset($_SESSION['error'])) {
                                     <div class="mb-3">
                                         <label class="form-label">User Type</label>
                                         <select name="uType" class="form-select" required>
-                                            <option value="Admin">Admin</option>
-                                            <option value="Manager">Manager</option>
-                                            <option value="User">User</option>
+                                            <option value="Admin" <?php echo $user['uType'] === 'Admin' ? 'selected' : ''; ?>>Admin</option>
+                                            <option value="Manager" <?php echo $user['uType'] === 'Manager' ? 'selected' : ''; ?>>Manager</option>
+                                            <option value="User" <?php echo $user['uType'] === 'User' ? 'selected' : ''; ?>>User</option>
                                         </select>
                                     </div>
                                 </div>
                             </div>
+                            
                             <div class="mb-3">
                                 <label class="form-label">Profile Photo</label>
                                 <input type="file" name="profile_photo" class="form-control" accept="image/jpeg,image/png,image/gif">
-                                <small class="text-muted">Upload a profile picture (optional)</small>
+                                <small class="text-muted">Upload a new profile picture (optional)</small>
                             </div>
+
                             <div class="d-flex justify-content-between mt-4">
                                 <a href="users.php" class="btn btn-light">
                                     <i class="bi bi-arrow-left"></i> Back to Users
                                 </a>
                                 <button type="submit" class="btn btn-primary">
-                                    <i class="bi bi-person-plus"></i> Add User
+                                    <i class="bi bi-save"></i> Save Changes
                                 </button>
                             </div>
                         </form>
@@ -588,7 +593,7 @@ if (isset($_SESSION['error'])) {
     <?php endif; ?>
 
     // Form validation with detailed error messages
-    document.getElementById('addUserForm').addEventListener('submit', function(e) {
+    document.getElementById('editUserForm').addEventListener('submit', function(e) {
         let isValid = true;
         let errorMessages = [];
         
@@ -640,7 +645,7 @@ if (isset($_SESSION['error'])) {
             errorSummary.innerHTML = '<strong>Please correct the following errors:</strong><ul>' + 
                 errorMessages.map(msg => `<li>${msg}</li>`).join('') + '</ul>';
             
-            const form = document.getElementById('addUserForm');
+            const form = document.getElementById('editUserForm');
             form.insertBefore(errorSummary, form.firstChild);
             
             // Remove the error summary after 5 seconds
@@ -659,6 +664,29 @@ if (isset($_SESSION['error'])) {
         const regex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
         return regex.test(email);
     }
+
+    // Preview profile photo
+    document.querySelector('input[name="profile_photo"]').addEventListener('change', function(event) {
+        if (this.files && this.files[0]) {
+            const reader = new FileReader();
+            
+            reader.onload = function(e) {
+                const previewImg = document.querySelector('.profile-preview');
+                if (previewImg.tagName === 'IMG') {
+                    previewImg.src = e.target.result;
+                } else {
+                    // If it's the placeholder div, replace it with an image
+                    const newImg = document.createElement('img');
+                    newImg.src = e.target.result;
+                    newImg.alt = "Profile Photo";
+                    newImg.className = "profile-preview mb-4";
+                    previewImg.parentNode.replaceChild(newImg, previewImg);
+                }
+            };
+            
+            reader.readAsDataURL(this.files[0]);
+        }
+    });
 
     // Responsive sidebar toggle
     document.addEventListener('DOMContentLoaded', function() {

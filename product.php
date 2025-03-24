@@ -13,6 +13,16 @@ if (!isset($_SESSION['username']) || ($_SESSION['uType'] !== 'Admin' && $_SESSIO
     header("Location: dashboard.php");
     exit();
 }
+
+
+// Function to add notification
+function addNotification($conn, $userId, $type, $title, $message) {
+    $stmt = $conn->prepare("INSERT INTO notifications (user_id, type, title, message, is_read, created_at) VALUES (?, ?, ?, ?, 0, NOW())");
+    $stmt->bind_param("isss", $userId, $type, $title, $message);
+    return $stmt->execute();
+}
+
+
 $upload_dir = "uploads/";
 // Set active tab for navigation
 $activeTab = 'products';
@@ -97,6 +107,22 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                     $stmt->bind_param("ii", $product_id, $group_id);
                     $stmt->execute();
                 }
+
+                    // Add notification for all admin and manager users
+    $adminQuery = "SELECT userID FROM z_user WHERE uType IN ('Admin', 'Manager')";
+    $adminResult = $conn->query($adminQuery);
+    
+    if ($adminResult) {
+        while ($admin = $adminResult->fetch_assoc()) {
+            addNotification(
+                $conn, 
+                $admin['userID'], 
+                'product', 
+                'New Product Added', 
+                "New product '{$product_name}' with {$healthy_option} health rating has been added."
+            );
+        }
+    }
 
                 $_SESSION['success'] = "Product successfully added!";
 

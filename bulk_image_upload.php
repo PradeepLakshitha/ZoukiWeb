@@ -858,13 +858,11 @@ if (isset($_SESSION['error'])) {
                                             <i class="bi bi-clipboard"></i>
                                         </button>
                                         <div class="image-actions">
-                                            <form method="POST" action="bulk_image_upload.php" style="display:inline;">
-                                                <input type="hidden" name="action" value="delete">
-                                                <input type="hidden" name="image" value="<?php echo htmlspecialchars($image['real_path']); ?>">
-                                                <button type="submit" class="btn-delete" onclick="return confirm('Are you sure you want to delete this image?');" title="Delete image">
-                                                    <i class="bi bi-trash"></i>
-                                                </button>
-                                            </form>
+                                            <button type="button" class="btn-delete"
+                                                    onclick="showDeleteModal('<?php echo htmlspecialchars($image['real_path']); ?>')"
+                                                    title="Delete image">
+                                                <i class="bi bi-trash"></i>
+                                            </button>
                                         </div>
                                     </div>
                                 <?php endforeach; ?>
@@ -956,6 +954,64 @@ if (isset($_SESSION['error'])) {
     const uploadProgress = document.getElementById('uploadProgress');
     const progressBar = uploadProgress.querySelector('.progress-bar');
 
+    //-------delete------
+    // Wrap all our delete modal code in a DOMContentLoaded event listener
+    document.addEventListener('DOMContentLoaded', function() {
+        // Delete image modal handling
+        let currentImageToDelete = null;
+
+        // Expose the showDeleteModal function to the global scope so onclick attributes can use it
+        window.showDeleteModal = function(imagePath) {
+            // Store the image path
+            currentImageToDelete = imagePath;
+
+            // Show the modal
+            const deleteModal = new bootstrap.Modal(document.getElementById('deleteImageModal'));
+            deleteModal.show();
+
+            console.log("Modal opened for image:", imagePath);
+        };
+
+        // Make sure the button exists before attaching the event listener
+        const confirmDeleteBtn = document.getElementById('confirmDeleteBtn');
+        if (confirmDeleteBtn) {
+            confirmDeleteBtn.addEventListener('click', function() {
+                console.log("Confirm delete button clicked");
+
+                if (currentImageToDelete) {
+                    console.log("Submitting delete for:", currentImageToDelete);
+
+                    // Create a more direct form submission
+                    const form = document.createElement('form');
+                    form.method = 'POST';
+                    form.action = 'bulk_image_upload.php';
+                    form.style.display = 'none';
+
+                    const actionInput = document.createElement('input');
+                    actionInput.type = 'hidden';
+                    actionInput.name = 'action';
+                    actionInput.value = 'delete';
+
+                    const imageInput = document.createElement('input');
+                    imageInput.type = 'hidden';
+                    imageInput.name = 'image';
+                    imageInput.value = currentImageToDelete;
+
+                    form.appendChild(actionInput);
+                    form.appendChild(imageInput);
+                    document.body.appendChild(form);
+
+                    // Submit the form
+                    form.submit();
+                } else {
+                    console.error("No image selected for deletion");
+                }
+            });
+        } else {
+            console.error("Delete confirmation button not found in the DOM");
+        }
+    });
+    //-------delete------
     // Handle file selection
     fileInput.addEventListener('change', function(e) {
         const files = e.target.files;
@@ -1084,5 +1140,29 @@ if (isset($_SESSION['error'])) {
         handleScreenChange(mediaQuery);
     });
 </script>
+<!-- Delete Image Modal -->
+<div class="modal fade" id="deleteImageModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Delete Image</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p>Are you sure you want to delete this image?</p>
+                <div class="alert alert-warning">
+                    <i class="bi bi-exclamation-triangle-fill me-2"></i>
+                    This action cannot be undone. The image will be permanently removed.
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" id="confirmDeleteBtn" class="btn btn-danger">
+                    <i class="bi bi-trash"></i> Delete Image
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
 </body>
 </html>
