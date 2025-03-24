@@ -82,6 +82,24 @@ if (isset($_SESSION['error'])) {
             align-items: center;
             gap: 10px;
         }
+        .features-list {
+            list-style-type: none;
+            padding-left: 0;
+            margin-top: 10px;
+        }
+
+        .features-list li {
+            padding: 5px 0;
+            display: flex;
+            align-items: center;
+        }
+
+        .features-list li:before {
+            content: "✓";
+            color: var(--success-color);
+            margin-right: 10px;
+            font-weight: bold;
+        }
 
         .sidebar .nav-link:hover,
         .sidebar .nav-link.active {
@@ -406,6 +424,32 @@ if (isset($_SESSION['error'])) {
                         <i class="bi bi-journal-text"></i>
                         <h5>System Logs</h5>
                         <p>View system logs and activity history</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <!-- Add this to the settings.php page, in the appropriate section -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="card-title mb-0">Recipe Format Settings</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-8">
+                        <h6>Format Filters Management</h6>
+                        <p>Manage formatting filters for ingredients and recipe instructions. These filters determine how ingredients are organized and how recipe instructions are highlighted.</p>
+
+                        <ul class="features-list">
+                            <li>Ingredient section headers (e.g., "Garnish:", "For the sauce:")</li>
+                            <li>Ingredient measurement patterns for parsing quantities</li>
+                            <li>Recipe section headers (e.g., "Preparation:", "Cooking:")</li>
+                            <li>Recipe highlight patterns (e.g., cooking times, temperatures)</li>
+                        </ul>
+                    </div>
+                    <div class="col-md-4 text-end">
+                        <a href="format_filters.php" class="btn btn-primary mt-3">
+                            <i class="bi bi-sliders"></i> Manage Format Filters
+                        </a>
                     </div>
                 </div>
             </div>

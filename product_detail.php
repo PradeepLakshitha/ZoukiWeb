@@ -12,17 +12,6 @@ if (!isset($_GET['id']) || empty($_GET['id'])) {
 $product_id = (int)$_GET['id'];
 
 // Get the product information with its categories and groups
-/*$product_query = "SELECT p.*,
-                  GROUP_CONCAT(DISTINCT c.category_name ORDER BY c.category_name SEPARATOR ', ') as categories,
-                  GROUP_CONCAT(DISTINCT g.group_name ORDER BY g.group_name SEPARATOR ', ') as groups
-                  FROM products p
-                  LEFT JOIN product_categories pc ON p.product_id = pc.product_id
-                  LEFT JOIN categories c ON pc.category_id = c.category_id
-                  LEFT JOIN product_groups pg ON p.product_id = pg.product_id
-                  LEFT JOIN groups g ON pg.group_id = g.group_id
-                  WHERE p.product_id = ?
-                  GROUP BY p.product_id";*/
-
 $product_query = "SELECT p.*, 
                   GROUP_CONCAT(DISTINCT c.category_name ORDER BY c.category_name SEPARATOR ', ') as categories,
                   GROUP_CONCAT(DISTINCT g.group_name ORDER BY g.group_name SEPARATOR ', ') as `groups`
@@ -66,8 +55,6 @@ if ($category_result->num_rows > 0) {
 }
 
 // Create the link for the QR code - this will point to view_qr.php
-//$qr_url = "view_qr.php?id=" . $product_id;
-//$qr_url = "http://54.206.221.88/view_qr.php?id=" . $product_id;
 $qr_url = "http://54.206.221.88/qr/" . $product_id;
 
 // Store the raw data for the test modal
@@ -78,6 +65,97 @@ $qr_data = array(
     'ingredients' => $product['ingredients'],
     'healthy_option' => $product['healthy_option']
 );
+
+// Fetch ingredient section headers from database
+$section_headers = [];
+try {
+    $section_headers_query = "SELECT header_text FROM ingredient_section_headers ORDER BY display_order";
+    $section_headers_result = $conn->query($section_headers_query);
+
+    if ($section_headers_result && $section_headers_result->num_rows > 0) {
+        while ($row = $section_headers_result->fetch_assoc()) {
+            $section_headers[] = $row['header_text'];
+        }
+    }
+} catch (Exception $e) {
+    // Log error
+    error_log("Error fetching ingredient section headers: " . $e->getMessage());
+    // Fallback to default values if database query fails
+    $section_headers = ["Garnish:", "Vegetables:", "For the sauce:", "For the marinade:", "For the filling:",
+        "For the topping:", "For the dressing:", "Main ingredients:", "Spices:", "Herbs:", "Seasonings:"];
+}
+
+// Fetch ingredient measurement patterns from database
+$measurement_pattern = '';
+try {
+    $patterns_query = "SELECT regex_pattern FROM ingredient_measurement_patterns WHERE pattern_name = 'Basic Measurement' LIMIT 1";
+    $patterns_result = $conn->query($patterns_query);
+
+    if ($patterns_result && $patterns_result->num_rows > 0) {
+        $measurement_pattern = $patterns_result->fetch_assoc()['regex_pattern'];
+    } else {
+        // Default pattern if not found in database
+        $measurement_pattern = '^([\d\/.]+\s*(?:tbsp|tsp|cup|cups|oz|ounce|ounces|g|gram|grams|kg|ml|l|pound|pounds|lb|lbs|pinch|dash|tablespoon|teaspoon)?)\s+(.+)$';
+    }
+} catch (Exception $e) {
+    // Log error and use default pattern
+    error_log("Error fetching ingredient measurement patterns: " . $e->getMessage());
+    $measurement_pattern = '^([\d\/.]+\s*(?:tbsp|tsp|cup|cups|oz|ounce|ounces|g|gram|grams|kg|ml|l|pound|pounds|lb|lbs|pinch|dash|tablespoon|teaspoon)?)\s+(.+)$';
+}
+
+// Fetch recipe section headers from database
+$specific_sections = [];
+try {
+    $specific_sections_query = "SELECT header_text FROM recipe_section_headers ORDER BY display_order";
+    $specific_sections_result = $conn->query($specific_sections_query);
+
+    if ($specific_sections_result && $specific_sections_result->num_rows > 0) {
+        while ($row = $specific_sections_result->fetch_assoc()) {
+            $specific_sections[] = $row['header_text'];
+        }
+    }
+} catch (Exception $e) {
+    // Log error
+    error_log("Error fetching recipe section headers: " . $e->getMessage());
+    // Fallback to default values if database query fails
+    $specific_sections = ['Marination:', 'Cooking Rice:', 'Garnish:', 'Preparation:', 'Cooking:', 'Assembly:', 'Serving:'];
+}
+
+// Fetch recipe highlight patterns from database
+$highlight_patterns = [];
+try {
+    $highlight_patterns_query = "SELECT pattern_name, regex_pattern, highlight_color, bold FROM recipe_highlight_patterns";
+    $highlight_patterns_result = $conn->query($highlight_patterns_query);
+
+    if ($highlight_patterns_result && $highlight_patterns_result->num_rows > 0) {
+        while ($row = $highlight_patterns_result->fetch_assoc()) {
+            $highlight_patterns[] = [
+                'name' => $row['pattern_name'],
+                'pattern' => $row['regex_pattern'],
+                'color' => $row['highlight_color'],
+                'bold' => (bool)$row['bold']
+            ];
+        }
+    }
+} catch (Exception $e) {
+    // Log error
+    error_log("Error fetching recipe highlight patterns: " . $e->getMessage());
+    // Fallback to default values if database query fails
+    $highlight_patterns = [
+        [
+            'name' => 'Temperature',
+            'pattern' => '(\d+)\s*(°[CF]|degrees [CF])',
+            'color' => '#d9534f',
+            'bold' => true
+        ],
+        [
+            'name' => 'Cooking Time',
+            'pattern' => '(\d+[-\d]*)\s*(minute|minutes|hour|hours|min|mins|hr|hrs)',
+            'color' => '#5bc0de',
+            'bold' => true
+        ]
+    ];
+}
 ?>
 
 <!DOCTYPE html>
@@ -728,9 +806,6 @@ $qr_data = array(
 
                         $current_section = null;
 
-                        // List of items that should be treated as section headers
-                        $section_headers = ["Garnish:", "Vegetables:", "For the sauce:", "For the marinade:", "For the filling:", "For the topping:", "For the dressing:", "Main ingredients:", "Spices:", "Herbs:", "Seasonings:"];
-
                         // Process each ingredient
                         foreach ($ingredients as $ingredient) {
                             $ingredient = trim($ingredient);
@@ -773,13 +848,19 @@ $qr_data = array(
                             echo '<div class="ingredient-item">';
 
                             // Try to identify quantity and unit from ingredient
-                            if (preg_match('/^([\d\/.]+\s*(?:tbsp|tsp|cup|cups|oz|ounce|ounces|g|gram|grams|kg|ml|l|pound|pounds|lb|lbs|pinch|dash|tablespoon|teaspoon)?)\s+(.+)$/i', $ingredient, $matches)) {
+                            if (preg_match('/' . str_replace('/', '\/', $measurement_pattern) . '/i', $ingredient, $matches)) {
                                 // We have a structured ingredient with quantity/unit
-                                $amount = trim($matches[1]);
-                                $name = trim($matches[2]);
+                                if (isset($matches[1]) && isset($matches[2])) {
+                                    $amount = trim($matches[1]);
+                                    $name = trim($matches[2]);
 
-                                echo '<div class="ingredient-amount">' . htmlspecialchars($amount) . '</div>';
-                                echo '<div class="ingredient-name">' . htmlspecialchars($name) . '</div>';
+                                    echo '<div class="ingredient-amount">' . htmlspecialchars($amount) . '</div>';
+                                    echo '<div class="ingredient-name">' . htmlspecialchars($name) . '</div>';
+                                } else {
+                                    // Just a regular ingredient
+                                    echo '<div class="ingredient-amount"></div>';
+                                    echo '<div class="ingredient-name">' . htmlspecialchars($ingredient) . '</div>';
+                                }
                             } else {
                                 // Just a regular ingredient
                                 echo '<div class="ingredient-amount"></div>';
@@ -808,9 +889,6 @@ $qr_data = array(
                     <div class="instructions">
                         <?php
                         $recipe_text = $product['recipe'];
-
-                        // Define specific recipe sections to highlight
-                        $specific_sections = ['Marination:', 'Cooking Rice:', 'Garnish:', 'Preparation:', 'Cooking:', 'Assembly:', 'Serving:'];
 
                         // Check if recipe already contains numbered steps
                         if (preg_match('/^\s*\d+[\)\.]\s+/m', $recipe_text)) {
@@ -913,27 +991,27 @@ $qr_data = array(
                                 echo '<p>' . htmlspecialchars($section_content) . '</p>';
                             }
 
-                            // Highlight cooking details like temperatures and times
-                            echo '<script>
-                                    document.addEventListener("DOMContentLoaded", function() {
-                                        const instructionsDiv = document.querySelector(".instructions");
-                                        const text = instructionsDiv.innerHTML;
-                                        
-                                        // Highlight temperatures (e.g., 350°F, 180°C)
-                                        const tempHighlighted = text.replace(
-                                            /(\d+)\s*(°[CF]|degrees [CF])/gi,
-                                            "<span style=\"color: #d9534f; font-weight: bold;\">$1$2</span>"
-                                        );
-                                        
-                                        // Highlight cooking times (e.g., 10 minutes, 2-3 hours)
-                                        const timeHighlighted = tempHighlighted.replace(
-                                            /(\d+[-\d]*)\s*(minute|minutes|hour|hours|min|mins|hr|hrs)/gi,
-                                            "<span style=\"color: #5bc0de; font-weight: bold;\">$1 $2</span>"
-                                        );
-                                        
-                                        instructionsDiv.innerHTML = timeHighlighted;
-                                    });
-                                </script>';
+                            // Generate JavaScript to highlight cooking details
+                            $highlight_js = "document.addEventListener('DOMContentLoaded', function() {
+                                const instructionsDiv = document.querySelector('.instructions');
+                                let text = instructionsDiv.innerHTML;
+                                ";
+
+                            // Apply each highlight pattern from database
+                            foreach ($highlight_patterns as $pattern) {
+                                $highlight_js .= "// Highlight " . $pattern['name'] . "\n";
+                                $highlight_js .= "text = text.replace(
+                                    /" . str_replace('/', '\\/', $pattern['pattern']) . "/gi,
+                                    \"<span style=\\\"color: " . $pattern['color'] . "; " .
+                                    ($pattern['bold'] ? "font-weight: bold;" : "") . "\\\">\$1\$2</span>\"
+                                );\n";
+                            }
+
+                            $highlight_js .= "
+                                instructionsDiv.innerHTML = text;
+                            });";
+
+                            echo "<script>$highlight_js</script>";
                         }
                         ?>
                     </div>
