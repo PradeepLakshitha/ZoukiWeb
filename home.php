@@ -935,6 +935,8 @@ $categories_result = $conn->query($categories_query);
 
         // Initialize Three.js background effect
         function initBackgroundEffect() {
+
+            try {
             const canvas = document.getElementById('bg-canvas');
             const renderer = new THREE.WebGLRenderer({
                 canvas: canvas,
@@ -1007,6 +1009,12 @@ $categories_result = $conn->query($categories_query);
                 // Update renderer
                 renderer.setSize(window.innerWidth, window.innerHeight);
             });
+            } catch (error) {
+                console.error('Background effect failed to initialize:', error);
+                // Hide the canvas or provide fallback
+                const canvas = document.getElementById('bg-canvas');
+                if (canvas) canvas.style.display = 'none';
+            }
         }
 
         // Initialize header scroll effect
