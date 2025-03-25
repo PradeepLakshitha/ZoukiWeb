@@ -2,6 +2,36 @@
 require_once 'session_check.php';
 check_session(['Admin']); // Only Admin can access this page
 include 'db_connection.php';
+include 'includes/functions.php';
+
+// Page-specific variables
+$page_title = 'Format Filters Management';
+$active_page = 'settings';
+
+// Get the logged-in user's information
+$userName = $_SESSION['username'];
+$userType = $_SESSION['uType'];
+$userId = $_SESSION['userID'] ?? 0;
+
+// Get user details
+$userDetails = getUserDetails($conn, $userName);
+
+// Get unread notification count
+$unreadCount = getUnreadNotificationCount($conn, $userId);
+
+// Get recent notifications
+$notificationsResult = getRecentNotifications($conn, $userId);
+
+// Get user profile photo
+$userPhotoQuery = $conn->prepare("SELECT profile_photo FROM z_user WHERE username = ?");
+if (!$userPhotoQuery) {
+    error_log("User photo query prepare failed: " . $conn->error);
+} else {
+    $userPhotoQuery->bind_param("s", $userName);
+    $userPhotoQuery->execute();
+    $userPhotoResult = $userPhotoQuery->get_result();
+    $userPhoto = $userPhotoResult ? $userPhotoResult->fetch_assoc()['profile_photo'] ?? null : null;
+}
 
 // Initialize variables
 $successMessage = '';
@@ -336,622 +366,444 @@ if ($recipePatternsResult && $recipePatternsResult->num_rows > 0) {
     }
 }
 
-// Close the database connection
-$conn->close();
+// Define page-specific CSS
+$additional_css = '
+.color-preview {
+    width: 25px;
+    height: 25px;
+    border-radius: 5px;
+    display: inline-block;
+    margin-right: 10px;
+    border: 1px solid #ddd;
+}
+
+/* Action Buttons */
+.action-btn {
+    padding: 5px 10px;
+    border-radius: 5px;
+    font-size: 0.875rem;
+    margin-right: 5px;
+}
+
+/* Empty State */
+.empty-state {
+    text-align: center;
+    padding: 30px;
+}
+
+.empty-state i {
+    font-size: 3rem;
+    color: #d1d1d1;
+    margin-bottom: 15px;
+}
+
+.empty-state h5 {
+    color: #6c757d;
+}
+';
+
+// Define page-specific scripts
+$page_scripts = '
+// Edit Ingredient Section Modal
+document.querySelectorAll(\'[data-bs-target="#editIngredientSectionModal"]\').forEach(function(button) {
+    button.addEventListener(\'click\', function() {
+        const id = this.getAttribute(\'data-id\');
+        const header = this.getAttribute(\'data-header\');
+        const order = this.getAttribute(\'data-order\');
+
+        document.getElementById(\'edit_ingredient_section_id\').value = id;
+        document.getElementById(\'edit_header_text\').value = header;
+        document.getElementById(\'edit_display_order\').value = order;
+    });
+});
+
+// Delete Ingredient Section Modal
+document.querySelectorAll(\'[data-bs-target="#deleteIngredientSectionModal"]\').forEach(function(button) {
+    button.addEventListener(\'click\', function() {
+        const id = this.getAttribute(\'data-id\');
+        const header = this.getAttribute(\'data-header\');
+
+        document.getElementById(\'delete_ingredient_section_id\').value = id;
+        document.getElementById(\'delete_ingredient_section_name\').textContent = header;
+    });
+});
+
+// Edit Ingredient Pattern Modal
+document.querySelectorAll(\'[data-bs-target="#editIngredientPatternModal"]\').forEach(function(button) {
+    button.addEventListener(\'click\', function() {
+        const id = this.getAttribute(\'data-id\');
+        const name = this.getAttribute(\'data-name\');
+        const pattern = this.getAttribute(\'data-pattern\');
+        const description = this.getAttribute(\'data-description\');
+
+        document.getElementById(\'edit_ingredient_pattern_id\').value = id;
+        document.getElementById(\'edit_pattern_name\').value = name;
+        document.getElementById(\'edit_regex_pattern\').value = pattern;
+        document.getElementById(\'edit_description\').value = description;
+    });
+});
+
+// Delete Ingredient Pattern Modal
+document.querySelectorAll(\'[data-bs-target="#deleteIngredientPatternModal"]\').forEach(function(button) {
+    button.addEventListener(\'click\', function() {
+        const id = this.getAttribute(\'data-id\');
+        const name = this.getAttribute(\'data-name\');
+
+        document.getElementById(\'delete_ingredient_pattern_id\').value = id;
+        document.getElementById(\'delete_ingredient_pattern_name\').textContent = name;
+    });
+});
+
+// Edit Recipe Section Modal
+document.querySelectorAll(\'[data-bs-target="#editRecipeSectionModal"]\').forEach(function(button) {
+    button.addEventListener(\'click\', function() {
+        const id = this.getAttribute(\'data-id\');
+        const header = this.getAttribute(\'data-header\');
+        const order = this.getAttribute(\'data-order\');
+
+        document.getElementById(\'edit_recipe_section_id\').value = id;
+        document.getElementById(\'edit_recipe_header_text\').value = header;
+        document.getElementById(\'edit_recipe_display_order\').value = order;
+    });
+});
+
+// Delete Recipe Section Modal
+document.querySelectorAll(\'[data-bs-target="#deleteRecipeSectionModal"]\').forEach(function(button) {
+    button.addEventListener(\'click\', function() {
+        const id = this.getAttribute(\'data-id\');
+        const header = this.getAttribute(\'data-header\');
+
+        document.getElementById(\'delete_recipe_section_id\').value = id;
+        document.getElementById(\'delete_recipe_section_name\').textContent = header;
+    });
+});
+
+// Edit Recipe Pattern Modal
+document.querySelectorAll(\'[data-bs-target="#editRecipePatternModal"]\').forEach(function(button) {
+    button.addEventListener(\'click\', function() {
+        const id = this.getAttribute(\'data-id\');
+        const name = this.getAttribute(\'data-name\');
+        const pattern = this.getAttribute(\'data-pattern\');
+        const color = this.getAttribute(\'data-color\');
+        const bold = this.getAttribute(\'data-bold\') === \'1\';
+        const description = this.getAttribute(\'data-description\');
+
+        document.getElementById(\'edit_recipe_pattern_id\').value = id;
+        document.getElementById(\'edit_recipe_pattern_name\').value = name;
+        document.getElementById(\'edit_recipe_regex_pattern\').value = pattern;
+        document.getElementById(\'edit_highlight_color\').value = color;
+        document.getElementById(\'edit_bold\').checked = bold;
+        document.getElementById(\'edit_recipe_description\').value = description;
+    });
+});
+
+// Delete Recipe Pattern Modal
+document.querySelectorAll(\'[data-bs-target="#deleteRecipePatternModal"]\').forEach(function(button) {
+    button.addEventListener(\'click\', function() {
+        const id = this.getAttribute(\'data-id\');
+        const name = this.getAttribute(\'data-name\');
+
+        document.getElementById(\'delete_recipe_pattern_id\').value = id;
+        document.getElementById(\'delete_recipe_pattern_name\').textContent = name;
+    });
+});
+
+// Automatically close alerts after 5 seconds
+window.addEventListener(\'DOMContentLoaded\', function() {
+    setTimeout(function() {
+        var alerts = document.querySelectorAll(\'.alert\');
+        alerts.forEach(function(alert) {
+            var bsAlert = new bootstrap.Alert(alert);
+            bsAlert.close();
+        });
+    }, 5000);
+});
+';
+
+// Include header
+include 'includes/header.php';
 ?>
 
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Format Filters Management - ZOUKI</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.7.2/font/bootstrap-icons.css" rel="stylesheet">
-    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-    <style>
-        :root {
-            --primary-color: #4CAF50;
-            --secondary-color: #2196F3;
-            --background-color: #f8f9fa;
-            --sidebar-width: 250px;
-            --danger-color: #dc3545;
-            --warning-color: #ffc107;
-            --success-color: #28a745;
-            --card-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-
-        /* Base Styles */
-        body {
-            background-color: var(--background-color);
-            font-family: 'Inter', 'Segoe UI', sans-serif;
-            margin: 0;
-            padding: 0;
-            min-height: 100vh;
-        }
-
-        /* Sidebar Styles */
-        .sidebar {
-            width: var(--sidebar-width);
-            position: fixed;
-            top: 0;
-            left: 0;
-            height: 100vh;
-            background: #2c3e50;
-            padding-top: 60px;
-            z-index: 1000;
-            transition: all 0.3s ease;
-        }
-
-        .sidebar .nav-link {
-            color: rgba(255, 255, 255, 0.8);
-            padding: 12px 20px;
-            margin: 4px 15px;
-            border-radius: 8px;
-            transition: all 0.3s ease;
-            font-size: 0.95rem;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-
-        .sidebar .nav-link:hover,
-        .sidebar .nav-link.active {
-            background: rgba(255, 255, 255, 0.1);
-            color: white;
-            transform: translateX(5px);
-        }
-
-        .sidebar .nav-link i {
-            font-size: 1.1rem;
-        }
-
-        /* Top Navbar Styles */
-        .top-navbar {
-            position: fixed;
-            top: 0;
-            right: 0;
-            left: var(--sidebar-width);
-            height: 60px;
-            background: white;
-            box-shadow: var(--card-shadow);
-            z-index: 999;
-            padding: 0 20px;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            transition: all 0.3s ease;
-        }
-
-        .top-navbar .user-info {
-            display: flex;
-            align-items: center;
-            gap: 15px;
-        }
-
-        .top-navbar .user-info .user-name {
-            font-weight: 500;
-            color: #2c3e50;
-        }
-
-        /* Main Content Area */
-        .main-content {
-            margin-left: var(--sidebar-width);
-            padding: 80px 20px 20px;
-            min-height: 100vh;
-            transition: all 0.3s ease;
-        }
-
-        .page-title {
-            margin-bottom: 25px;
-            color: #333;
-        }
-
-        /* Card Styles */
-        .card {
-            border: none;
-            border-radius: 12px;
-            box-shadow: var(--card-shadow);
-            margin-bottom: 20px;
-            background: white;
-        }
-
-        .card-header {
-            background: white;
-            border-bottom: 1px solid rgba(0,0,0,0.08);
-            padding: 15px 20px;
-            border-radius: 12px 12px 0 0;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-
-        .card-header h5 {
-            margin: 0;
-            font-weight: 600;
-        }
-
-        .card-body {
-            padding: 20px;
-        }
-
-        /* Tab Styles */
-        .nav-tabs {
-            border-bottom: 1px solid #dee2e6;
-            margin-bottom: 20px;
-        }
-
-        .nav-tabs .nav-item .nav-link {
-            border: none;
-            color: #6c757d;
-            padding: 12px 20px;
-            font-weight: 500;
-            border-radius: 0;
-            transition: all 0.3s ease;
-        }
-
-        .nav-tabs .nav-item .nav-link:hover {
-            background-color: rgba(0,0,0,0.02);
-            color: var(--primary-color);
-        }
-
-        .nav-tabs .nav-item .nav-link.active {
-            color: var(--primary-color);
-            border-bottom: 3px solid var(--primary-color);
-            background-color: transparent;
-        }
-
-        /* Table Styles */
-        .table {
-            margin-bottom: 0;
-        }
-
-        .table th {
-            font-weight: 600;
-            color: #2c3e50;
-        }
-
-        .table td {
-            vertical-align: middle;
-        }
-
-        /* Form Styles */
-        .form-label {
-            font-weight: 500;
-            color: #333;
-        }
-
-        .form-control {
-            border-radius: 8px;
-            border: 1px solid #e0e0e0;
-            padding: 10px 15px;
-            transition: all 0.3s ease;
-        }
-
-        .form-control:focus {
-            border-color: var(--primary-color);
-            box-shadow: 0 0 0 0.2rem rgba(76, 175, 80, 0.25);
-        }
-
-        .color-preview {
-            width: 25px;
-            height: 25px;
-            border-radius: 5px;
-            display: inline-block;
-            margin-right: 10px;
-            border: 1px solid #ddd;
-        }
-
-        /* Action Buttons */
-        .action-btn {
-            padding: 5px 10px;
-            border-radius: 5px;
-            font-size: 0.875rem;
-            margin-right: 5px;
-        }
-
-        /* Responsive styles */
-        @media (max-width: 768px) {
-            .sidebar {
-                width: 60px;
-                padding-top: 50px;
-            }
-
-            .sidebar .nav-link span {
-                display: none;
-            }
-
-            .sidebar .nav-link {
-                padding: 12px;
-                margin: 4px 8px;
-                justify-content: center;
-            }
-
-            .top-navbar {
-                left: 60px;
-            }
-
-            .main-content {
-                margin-left: 60px;
-            }
-        }
-
-        /* Empty State */
-        .empty-state {
-            text-align: center;
-            padding: 30px;
-        }
-
-        .empty-state i {
-            font-size: 3rem;
-            color: #d1d1d1;
-            margin-bottom: 15px;
-        }
-
-        .empty-state h5 {
-            color: #6c757d;
-        }
-    </style>
-</head>
-<body>
-<!-- Sidebar -->
-<nav class="sidebar">
-    <ul class="nav flex-column">
-        <li class="nav-item">
-            <a class="nav-link" href="dashboard.php">
-                <i class="bi bi-speedometer2"></i>
-                <span>Dashboard</span>
+<div class="container-fluid">
+    <!-- Tab Navigation -->
+    <ul class="nav nav-tabs" id="formatTabs" role="tablist">
+        <li class="nav-item" role="presentation">
+            <a class="nav-link <?php echo $activeTab === 'ingredient_sections' ? 'active' : ''; ?>" href="?tab=ingredient_sections">
+                Ingredient Section Headers
             </a>
         </li>
-        <li class="nav-item">
-            <a class="nav-link" href="products_management.php">
-                <i class="bi bi-box"></i>
-                <span>Products</span>
+        <li class="nav-item" role="presentation">
+            <a class="nav-link <?php echo $activeTab === 'ingredient_patterns' ? 'active' : ''; ?>" href="?tab=ingredient_patterns">
+                Ingredient Measurement Patterns
             </a>
         </li>
-        <li class="nav-item">
-            <a class="nav-link" href="categories_groups.php?tab=categories">
-                <i class="bi bi-tags"></i>
-                <span>Categories</span>
+        <li class="nav-item" role="presentation">
+            <a class="nav-link <?php echo $activeTab === 'recipe_sections' ? 'active' : ''; ?>" href="?tab=recipe_sections">
+                Recipe Section Headers
             </a>
         </li>
-        <li class="nav-item">
-            <a class="nav-link" href="categories_groups.php?tab=groups">
-                <i class="bi bi-collection"></i>
-                <span>Groups</span>
-            </a>
-        </li>
-        <li class="nav-item">
-            <a class="nav-link" href="users.php">
-                <i class="bi bi-people"></i>
-                <span>Users</span>
-            </a>
-        </li>
-        <li class="nav-item">
-            <a class="nav-link" href="reports.php">
-                <i class="bi bi-graph-up"></i>
-                <span>Reports</span>
-            </a>
-        </li>
-        <li class="nav-item">
-            <a class="nav-link" href="settings.php">
-                <i class="bi bi-gear"></i>
-                <span>Settings</span>
+        <li class="nav-item" role="presentation">
+            <a class="nav-link <?php echo $activeTab === 'recipe_patterns' ? 'active' : ''; ?>" href="?tab=recipe_patterns">
+                Recipe Highlight Patterns
             </a>
         </li>
     </ul>
-</nav>
 
-<!-- Top Navbar -->
-<nav class="top-navbar">
-    <div class="d-flex align-items-center">
-        <h4 class="mb-0">Format Filters Management</h4>
-    </div>
-    <div class="user-info">
-        <span class="user-name"><?php echo htmlspecialchars($_SESSION['username']); ?></span>
-        <a href="logout.php" class="btn btn-outline-danger btn-sm">
-            <i class="bi bi-box-arrow-right"></i> Logout
-        </a>
-    </div>
-</nav>
-
-<!-- Main Content -->
-<div class="main-content">
-    <div class="container-fluid">
-        <?php if ($errorMessage): ?>
-            <div class="alert alert-danger alert-dismissible fade show" role="alert">
-                <?php echo htmlspecialchars($errorMessage); ?>
-                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-            </div>
-        <?php endif; ?>
-
-        <?php if ($successMessage): ?>
-            <div class="alert alert-success alert-dismissible fade show" role="alert">
-                <?php echo htmlspecialchars($successMessage); ?>
-                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-            </div>
-        <?php endif; ?>
-
-        <!-- Tab Navigation -->
-        <ul class="nav nav-tabs" id="formatTabs" role="tablist">
-            <li class="nav-item" role="presentation">
-                <a class="nav-link <?php echo $activeTab === 'ingredient_sections' ? 'active' : ''; ?>" href="?tab=ingredient_sections">
-                    Ingredient Section Headers
-                </a>
-            </li>
-            <li class="nav-item" role="presentation">
-                <a class="nav-link <?php echo $activeTab === 'ingredient_patterns' ? 'active' : ''; ?>" href="?tab=ingredient_patterns">
-                    Ingredient Measurement Patterns
-                </a>
-            </li>
-            <li class="nav-item" role="presentation">
-                <a class="nav-link <?php echo $activeTab === 'recipe_sections' ? 'active' : ''; ?>" href="?tab=recipe_sections">
-                    Recipe Section Headers
-                </a>
-            </li>
-            <li class="nav-item" role="presentation">
-                <a class="nav-link <?php echo $activeTab === 'recipe_patterns' ? 'active' : ''; ?>" href="?tab=recipe_patterns">
-                    Recipe Highlight Patterns
-                </a>
-            </li>
-        </ul>
-
-        <!-- Tab Content -->
-        <div class="tab-content">
-            <!-- INGREDIENT SECTION HEADERS TAB -->
-            <div class="tab-pane fade <?php echo $activeTab === 'ingredient_sections' ? 'show active' : ''; ?>" id="ingredient-sections-tab">
-                <div class="card mb-4">
-                    <div class="card-header">
-                        <h5>Ingredient Section Headers</h5>
-                        <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addIngredientSectionModal">
-                            <i class="bi bi-plus-lg"></i> Add New Header
-                        </button>
-                    </div>
-                    <div class="card-body">
-                        <?php if (count($ingredientSections) > 0): ?>
-                            <div class="table-responsive">
-                                <table class="table table-striped">
-                                    <thead>
+    <!-- Tab Content -->
+    <div class="tab-content">
+        <!-- INGREDIENT SECTION HEADERS TAB -->
+        <div class="tab-pane fade <?php echo $activeTab === 'ingredient_sections' ? 'show active' : ''; ?>" id="ingredient-sections-tab">
+            <div class="app-card mb-4">
+                <div class="app-card-header d-flex justify-content-between align-items-center">
+                    <h5 class="app-card-title">Ingredient Section Headers</h5>
+                    <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addIngredientSectionModal">
+                        <i class="bi bi-plus-lg"></i> Add New Header
+                    </button>
+                </div>
+                <div class="app-card-body">
+                    <?php if (count($ingredientSections) > 0): ?>
+                        <div class="table-responsive">
+                            <table class="table table-striped">
+                                <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Header Text</th>
+                                    <th>Display Order</th>
+                                    <th>Actions</th>
+                                </tr>
+                                </thead>
+                                <tbody>
+                                <?php foreach ($ingredientSections as $section): ?>
                                     <tr>
-                                        <th>ID</th>
-                                        <th>Header Text</th>
-                                        <th>Display Order</th>
-                                        <th>Actions</th>
+                                        <td><?php echo $section['id']; ?></td>
+                                        <td><?php echo htmlspecialchars($section['header_text']); ?></td>
+                                        <td><?php echo $section['display_order']; ?></td>
+                                        <td>
+                                            <button class="btn btn-sm btn-outline-primary action-btn"
+                                                    data-bs-toggle="modal"
+                                                    data-bs-target="#editIngredientSectionModal"
+                                                    data-id="<?php echo $section['id']; ?>"
+                                                    data-header="<?php echo htmlspecialchars($section['header_text']); ?>"
+                                                    data-order="<?php echo $section['display_order']; ?>">
+                                                <i class="bi bi-pencil"></i> Edit
+                                            </button>
+                                            <button class="btn btn-sm btn-outline-danger action-btn"
+                                                    data-bs-toggle="modal"
+                                                    data-bs-target="#deleteIngredientSectionModal"
+                                                    data-id="<?php echo $section['id']; ?>"
+                                                    data-header="<?php echo htmlspecialchars($section['header_text']); ?>">
+                                                <i class="bi bi-trash"></i> Delete
+                                            </button>
+                                        </td>
                                     </tr>
-                                    </thead>
-                                    <tbody>
-                                    <?php foreach ($ingredientSections as $section): ?>
-                                        <tr>
-                                            <td><?php echo $section['id']; ?></td>
-                                            <td><?php echo htmlspecialchars($section['header_text']); ?></td>
-                                            <td><?php echo $section['display_order']; ?></td>
-                                            <td>
-                                                <button class="btn btn-sm btn-outline-primary action-btn"
-                                                        data-bs-toggle="modal"
-                                                        data-bs-target="#editIngredientSectionModal"
-                                                        data-id="<?php echo $section['id']; ?>"
-                                                        data-header="<?php echo htmlspecialchars($section['header_text']); ?>"
-                                                        data-order="<?php echo $section['display_order']; ?>">
-                                                    <i class="bi bi-pencil"></i> Edit
-                                                </button>
-                                                <button class="btn btn-sm btn-outline-danger action-btn"
-                                                        data-bs-toggle="modal"
-                                                        data-bs-target="#deleteIngredientSectionModal"
-                                                        data-id="<?php echo $section['id']; ?>"
-                                                        data-header="<?php echo htmlspecialchars($section['header_text']); ?>">
-                                                    <i class="bi bi-trash"></i> Delete
-                                                </button>
-                                            </td>
-                                        </tr>
-                                    <?php endforeach; ?>
-                                    </tbody>
-                                </table>
-                            </div>
-                        <?php else: ?>
-                            <div class="empty-state">
-                                <i class="bi bi-tags"></i>
-                                <h5>No ingredient section headers found</h5>
-                                <p>Add section headers to organize ingredients in recipes.</p>
-                            </div>
-                        <?php endif; ?>
-                    </div>
+                                <?php endforeach; ?>
+                                </tbody>
+                            </table>
+                        </div>
+                    <?php else: ?>
+                        <div class="empty-state">
+                            <i class="bi bi-tags"></i>
+                            <h5>No ingredient section headers found</h5>
+                            <p>Add section headers to organize ingredients in recipes.</p>
+                        </div>
+                    <?php endif; ?>
                 </div>
             </div>
+        </div>
 
-            <!-- INGREDIENT MEASUREMENT PATTERNS TAB -->
-            <div class="tab-pane fade <?php echo $activeTab === 'ingredient_patterns' ? 'show active' : ''; ?>" id="ingredient-patterns-tab">
-                <div class="card mb-4">
-                    <div class="card-header">
-                        <h5>Ingredient Measurement Patterns</h5>
-                        <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addIngredientPatternModal">
-                            <i class="bi bi-plus-lg"></i> Add New Pattern
-                        </button>
-                    </div>
-                    <div class="card-body">
-                        <?php if (count($ingredientPatterns) > 0): ?>
-                            <div class="table-responsive">
-                                <table class="table table-striped">
-                                    <thead>
+        <!-- INGREDIENT MEASUREMENT PATTERNS TAB -->
+        <div class="tab-pane fade <?php echo $activeTab === 'ingredient_patterns' ? 'show active' : ''; ?>" id="ingredient-patterns-tab">
+            <div class="app-card mb-4">
+                <div class="app-card-header d-flex justify-content-between align-items-center">
+                    <h5 class="app-card-title">Ingredient Measurement Patterns</h5>
+                    <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addIngredientPatternModal">
+                        <i class="bi bi-plus-lg"></i> Add New Pattern
+                    </button>
+                </div>
+                <div class="app-card-body">
+                    <?php if (count($ingredientPatterns) > 0): ?>
+                        <div class="table-responsive">
+                            <table class="table table-striped">
+                                <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Pattern Name</th>
+                                    <th>Regex Pattern</th>
+                                    <th>Description</th>
+                                    <th>Actions</th>
+                                </tr>
+                                </thead>
+                                <tbody>
+                                <?php foreach ($ingredientPatterns as $pattern): ?>
                                     <tr>
-                                        <th>ID</th>
-                                        <th>Pattern Name</th>
-                                        <th>Regex Pattern</th>
-                                        <th>Description</th>
-                                        <th>Actions</th>
+                                        <td><?php echo $pattern['id']; ?></td>
+                                        <td><?php echo htmlspecialchars($pattern['pattern_name']); ?></td>
+                                        <td><code><?php echo htmlspecialchars($pattern['regex_pattern']); ?></code></td>
+                                        <td><?php echo htmlspecialchars($pattern['description']); ?></td>
+                                        <td>
+                                            <button class="btn btn-sm btn-outline-primary action-btn"
+                                                    data-bs-toggle="modal"
+                                                    data-bs-target="#editIngredientPatternModal"
+                                                    data-id="<?php echo $pattern['id']; ?>"
+                                                    data-name="<?php echo htmlspecialchars($pattern['pattern_name']); ?>"
+                                                    data-pattern="<?php echo htmlspecialchars($pattern['regex_pattern']); ?>"
+                                                    data-description="<?php echo htmlspecialchars($pattern['description']); ?>">
+                                                <i class="bi bi-pencil"></i> Edit
+                                            </button>
+                                            <button class="btn btn-sm btn-outline-danger action-btn"
+                                                    data-bs-toggle="modal"
+                                                    data-bs-target="#deleteIngredientPatternModal"
+                                                    data-id="<?php echo $pattern['id']; ?>"
+                                                    data-name="<?php echo htmlspecialchars($pattern['pattern_name']); ?>">
+                                                <i class="bi bi-trash"></i> Delete
+                                            </button>
+                                        </td>
                                     </tr>
-                                    </thead>
-                                    <tbody>
-                                    <?php foreach ($ingredientPatterns as $pattern): ?>
-                                        <tr>
-                                            <td><?php echo $pattern['id']; ?></td>
-                                            <td><?php echo htmlspecialchars($pattern['pattern_name']); ?></td>
-                                            <td><code><?php echo htmlspecialchars($pattern['regex_pattern']); ?></code></td>
-                                            <td><?php echo htmlspecialchars($pattern['description']); ?></td>
-                                            <td>
-                                                <button class="btn btn-sm btn-outline-primary action-btn"
-                                                        data-bs-toggle="modal"
-                                                        data-bs-target="#editIngredientPatternModal"
-                                                        data-id="<?php echo $pattern['id']; ?>"
-                                                        data-name="<?php echo htmlspecialchars($pattern['pattern_name']); ?>"
-                                                        data-pattern="<?php echo htmlspecialchars($pattern['regex_pattern']); ?>"
-                                                        data-description="<?php echo htmlspecialchars($pattern['description']); ?>">
-                                                    <i class="bi bi-pencil"></i> Edit
-                                                </button>
-                                                <button class="btn btn-sm btn-outline-danger action-btn"
-                                                        data-bs-toggle="modal"
-                                                        data-bs-target="#deleteIngredientPatternModal"
-                                                        data-id="<?php echo $pattern['id']; ?>"
-                                                        data-name="<?php echo htmlspecialchars($pattern['pattern_name']); ?>">
-                                                    <i class="bi bi-trash"></i> Delete
-                                                </button>
-                                            </td>
-                                        </tr>
-                                    <?php endforeach; ?>
-                                    </tbody>
-                                </table>
-                            </div>
-                        <?php else: ?>
-                            <div class="empty-state">
-                                <i class="bi bi-braces"></i>
-                                <h5>No ingredient measurement patterns found</h5>
-                                <p>Add regex patterns to identify measurements in ingredients.</p>
-                            </div>
-                        <?php endif; ?>
-                    </div>
+                                <?php endforeach; ?>
+                                </tbody>
+                            </table>
+                        </div>
+                    <?php else: ?>
+                        <div class="empty-state">
+                            <i class="bi bi-braces"></i>
+                            <h5>No ingredient measurement patterns found</h5>
+                            <p>Add regex patterns to identify measurements in ingredients.</p>
+                        </div>
+                    <?php endif; ?>
                 </div>
             </div>
+        </div>
 
-            <!-- RECIPE SECTION HEADERS TAB -->
-            <div class="tab-pane fade <?php echo $activeTab === 'recipe_sections' ? 'show active' : ''; ?>" id="recipe-sections-tab">
-                <div class="card mb-4">
-                    <div class="card-header">
-                        <h5>Recipe Section Headers</h5>
-                        <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addRecipeSectionModal">
-                            <i class="bi bi-plus-lg"></i> Add New Header
-                        </button>
-                    </div>
-                    <div class="card-body">
-                        <?php if (count($recipeSections) > 0): ?>
-                            <div class="table-responsive">
-                                <table class="table table-striped">
-                                    <thead>
+        <!-- RECIPE SECTION HEADERS TAB -->
+        <div class="tab-pane fade <?php echo $activeTab === 'recipe_sections' ? 'show active' : ''; ?>" id="recipe-sections-tab">
+            <div class="app-card mb-4">
+                <div class="app-card-header d-flex justify-content-between align-items-center">
+                    <h5 class="app-card-title">Recipe Section Headers</h5>
+                    <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addRecipeSectionModal">
+                        <i class="bi bi-plus-lg"></i> Add New Header
+                    </button>
+                </div>
+                <div class="app-card-body">
+                    <?php if (count($recipeSections) > 0): ?>
+                        <div class="table-responsive">
+                            <table class="table table-striped">
+                                <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Header Text</th>
+                                    <th>Display Order</th>
+                                    <th>Actions</th>
+                                </tr>
+                                </thead>
+                                <tbody>
+                                <?php foreach ($recipeSections as $section): ?>
                                     <tr>
-                                        <th>ID</th>
-                                        <th>Header Text</th>
-                                        <th>Display Order</th>
-                                        <th>Actions</th>
+                                        <td><?php echo $section['id']; ?></td>
+                                        <td><?php echo htmlspecialchars($section['header_text']); ?></td>
+                                        <td><?php echo $section['display_order']; ?></td>
+                                        <td>
+                                            <button class="btn btn-sm btn-outline-primary action-btn"
+                                                    data-bs-toggle="modal"
+                                                    data-bs-target="#editRecipeSectionModal"
+                                                    data-id="<?php echo $section['id']; ?>"
+                                                    data-header="<?php echo htmlspecialchars($section['header_text']); ?>"
+                                                    data-order="<?php echo $section['display_order']; ?>">
+                                                <i class="bi bi-pencil"></i> Edit
+                                            </button>
+                                            <button class="btn btn-sm btn-outline-danger action-btn"
+                                                    data-bs-toggle="modal"
+                                                    data-bs-target="#deleteRecipeSectionModal"
+                                                    data-id="<?php echo $section['id']; ?>"
+                                                    data-header="<?php echo htmlspecialchars($section['header_text']); ?>">
+                                                <i class="bi bi-trash"></i> Delete
+                                            </button>
+                                        </td>
                                     </tr>
-                                    </thead>
-                                    <tbody>
-                                    <?php foreach ($recipeSections as $section): ?>
-                                        <tr>
-                                            <td><?php echo $section['id']; ?></td>
-                                            <td><?php echo htmlspecialchars($section['header_text']); ?></td>
-                                            <td><?php echo $section['display_order']; ?></td>
-                                            <td>
-                                                <button class="btn btn-sm btn-outline-primary action-btn"
-                                                        data-bs-toggle="modal"
-                                                        data-bs-target="#editRecipeSectionModal"
-                                                        data-id="<?php echo $section['id']; ?>"
-                                                        data-header="<?php echo htmlspecialchars($section['header_text']); ?>"
-                                                        data-order="<?php echo $section['display_order']; ?>">
-                                                    <i class="bi bi-pencil"></i> Edit
-                                                </button>
-                                                <button class="btn btn-sm btn-outline-danger action-btn"
-                                                        data-bs-toggle="modal"
-                                                        data-bs-target="#deleteRecipeSectionModal"
-                                                        data-id="<?php echo $section['id']; ?>"
-                                                        data-header="<?php echo htmlspecialchars($section['header_text']); ?>">
-                                                    <i class="bi bi-trash"></i> Delete
-                                                </button>
-                                            </td>
-                                        </tr>
-                                    <?php endforeach; ?>
-                                    </tbody>
-                                </table>
-                            </div>
-                        <?php else: ?>
-                            <div class="empty-state">
-                                <i class="bi bi-list-ul"></i>
-                                <h5>No recipe section headers found</h5>
-                                <p>Add section headers to organize recipe instructions.</p>
-                            </div>
-                        <?php endif; ?>
-                    </div>
+                                <?php endforeach; ?>
+                                </tbody>
+                            </table>
+                        </div>
+                    <?php else: ?>
+                        <div class="empty-state">
+                            <i class="bi bi-list-ul"></i>
+                            <h5>No recipe section headers found</h5>
+                            <p>Add section headers to organize recipe instructions.</p>
+                        </div>
+                    <?php endif; ?>
                 </div>
             </div>
+        </div>
 
-            <!-- RECIPE HIGHLIGHT PATTERNS TAB -->
-            <div class="tab-pane fade <?php echo $activeTab === 'recipe_patterns' ? 'show active' : ''; ?>" id="recipe-patterns-tab">
-                <div class="card mb-4">
-                    <div class="card-header">
-                        <h5>Recipe Highlight Patterns</h5>
-                        <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addRecipePatternModal">
-                            <i class="bi bi-plus-lg"></i> Add New Pattern
-                        </button>
-                    </div>
-                    <div class="card-body">
-                        <?php if (count($recipePatterns) > 0): ?>
-                            <div class="table-responsive">
-                                <table class="table table-striped">
-                                    <thead>
+        <!-- RECIPE HIGHLIGHT PATTERNS TAB -->
+        <div class="tab-pane fade <?php echo $activeTab === 'recipe_patterns' ? 'show active' : ''; ?>" id="recipe-patterns-tab">
+            <div class="app-card mb-4">
+                <div class="app-card-header d-flex justify-content-between align-items-center">
+                    <h5 class="app-card-title">Recipe Highlight Patterns</h5>
+                    <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addRecipePatternModal">
+                        <i class="bi bi-plus-lg"></i> Add New Pattern
+                    </button>
+                </div>
+                <div class="app-card-body">
+                    <?php if (count($recipePatterns) > 0): ?>
+                        <div class="table-responsive">
+                            <table class="table table-striped">
+                                <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Pattern Name</th>
+                                    <th>Regex Pattern</th>
+                                    <th>Color</th>
+                                    <th>Bold</th>
+                                    <th>Description</th>
+                                    <th>Actions</th>
+                                </tr>
+                                </thead>
+                                <tbody>
+                                <?php foreach ($recipePatterns as $pattern): ?>
                                     <tr>
-                                        <th>ID</th>
-                                        <th>Pattern Name</th>
-                                        <th>Regex Pattern</th>
-                                        <th>Color</th>
-                                        <th>Bold</th>
-                                        <th>Description</th>
-                                        <th>Actions</th>
+                                        <td><?php echo $pattern['id']; ?></td>
+                                        <td><?php echo htmlspecialchars($pattern['pattern_name']); ?></td>
+                                        <td><code><?php echo htmlspecialchars($pattern['regex_pattern']); ?></code></td>
+                                        <td>
+                                            <div class="d-flex align-items-center">
+                                                <div class="color-preview" style="background-color: <?php echo htmlspecialchars($pattern['highlight_color']); ?>"></div>
+                                                <?php echo htmlspecialchars($pattern['highlight_color']); ?>
+                                            </div>
+                                        </td>
+                                        <td><?php echo $pattern['bold'] ? 'Yes' : 'No'; ?></td>
+                                        <td><?php echo htmlspecialchars($pattern['description']); ?></td>
+                                        <td>
+                                            <button class="btn btn-sm btn-outline-primary action-btn"
+                                                    data-bs-toggle="modal"
+                                                    data-bs-target="#editRecipePatternModal"
+                                                    data-id="<?php echo $pattern['id']; ?>"
+                                                    data-name="<?php echo htmlspecialchars($pattern['pattern_name']); ?>"
+                                                    data-pattern="<?php echo htmlspecialchars($pattern['regex_pattern']); ?>"
+                                                    data-color="<?php echo htmlspecialchars($pattern['highlight_color']); ?>"
+                                                    data-bold="<?php echo $pattern['bold']; ?>"
+                                                    data-description="<?php echo htmlspecialchars($pattern['description']); ?>">
+                                                <i class="bi bi-pencil"></i> Edit
+                                            </button>
+                                            <button class="btn btn-sm btn-outline-danger action-btn"
+                                                    data-bs-toggle="modal"
+                                                    data-bs-target="#deleteRecipePatternModal"
+                                                    data-id="<?php echo $pattern['id']; ?>"
+                                                    data-name="<?php echo htmlspecialchars($pattern['pattern_name']); ?>">
+                                                <i class="bi bi-trash"></i> Delete
+                                            </button>
+                                        </td>
                                     </tr>
-                                    </thead>
-                                    <tbody>
-                                    <?php foreach ($recipePatterns as $pattern): ?>
-                                        <tr>
-                                            <td><?php echo $pattern['id']; ?></td>
-                                            <td><?php echo htmlspecialchars($pattern['pattern_name']); ?></td>
-                                            <td><code><?php echo htmlspecialchars($pattern['regex_pattern']); ?></code></td>
-                                            <td>
-                                                <div class="d-flex align-items-center">
-                                                    <div class="color-preview" style="background-color: <?php echo htmlspecialchars($pattern['highlight_color']); ?>"></div>
-                                                    <?php echo htmlspecialchars($pattern['highlight_color']); ?>
-                                                </div>
-                                            </td>
-                                            <td><?php echo $pattern['bold'] ? 'Yes' : 'No'; ?></td>
-                                            <td><?php echo htmlspecialchars($pattern['description']); ?></td>
-                                            <td>
-                                                <button class="btn btn-sm btn-outline-primary action-btn"
-                                                        data-bs-toggle="modal"
-                                                        data-bs-target="#editRecipePatternModal"
-                                                        data-id="<?php echo $pattern['id']; ?>"
-                                                        data-name="<?php echo htmlspecialchars($pattern['pattern_name']); ?>"
-                                                        data-pattern="<?php echo htmlspecialchars($pattern['regex_pattern']); ?>"
-                                                        data-color="<?php echo htmlspecialchars($pattern['highlight_color']); ?>"
-                                                        data-bold="<?php echo $pattern['bold']; ?>"
-                                                        data-description="<?php echo htmlspecialchars($pattern['description']); ?>">
-                                                    <i class="bi bi-pencil"></i> Edit
-                                                </button>
-                                                <button class="btn btn-sm btn-outline-danger action-btn"
-                                                        data-bs-toggle="modal"
-                                                        data-bs-target="#deleteRecipePatternModal"
-                                                        data-id="<?php echo $pattern['id']; ?>"
-                                                        data-name="<?php echo htmlspecialchars($pattern['pattern_name']); ?>">
-                                                    <i class="bi bi-trash"></i> Delete
-                                                </button>
-                                            </td>
-                                        </tr>
-                                    <?php endforeach; ?>
-                                    </tbody>
-                                </table>
-                            </div>
-                        <?php else: ?>
-                            <div class="empty-state">
-                                <i class="bi bi-highlighter"></i>
-                                <h5>No recipe highlight patterns found</h5>
-                                <p>Add patterns to highlight important information in recipes.</p>
-                            </div>
-                        <?php endif; ?>
-                    </div>
+                                <?php endforeach; ?>
+                                </tbody>
+                            </table>
+                        </div>
+                    <?php else: ?>
+                        <div class="empty-state">
+                            <i class="bi bi-highlighter"></i>
+                            <h5>No recipe highlight patterns found</h5>
+                            <p>Add patterns to highlight important information in recipes.</p>
+                        </div>
+                    <?php endif; ?>
                 </div>
             </div>
         </div>
@@ -1339,122 +1191,7 @@ $conn->close();
     </div>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
-<script>
-    // Edit Ingredient Section Modal
-    document.querySelectorAll('[data-bs-target="#editIngredientSectionModal"]').forEach(function(button) {
-        button.addEventListener('click', function() {
-            const id = this.getAttribute('data-id');
-            const header = this.getAttribute('data-header');
-            const order = this.getAttribute('data-order');
-
-            document.getElementById('edit_ingredient_section_id').value = id;
-            document.getElementById('edit_header_text').value = header;
-            document.getElementById('edit_display_order').value = order;
-        });
-    });
-
-    // Delete Ingredient Section Modal
-    document.querySelectorAll('[data-bs-target="#deleteIngredientSectionModal"]').forEach(function(button) {
-        button.addEventListener('click', function() {
-            const id = this.getAttribute('data-id');
-            const header = this.getAttribute('data-header');
-
-            document.getElementById('delete_ingredient_section_id').value = id;
-            document.getElementById('delete_ingredient_section_name').textContent = header;
-        });
-    });
-
-    // Edit Ingredient Pattern Modal
-    document.querySelectorAll('[data-bs-target="#editIngredientPatternModal"]').forEach(function(button) {
-        button.addEventListener('click', function() {
-            const id = this.getAttribute('data-id');
-            const name = this.getAttribute('data-name');
-            const pattern = this.getAttribute('data-pattern');
-            const description = this.getAttribute('data-description');
-
-            document.getElementById('edit_ingredient_pattern_id').value = id;
-            document.getElementById('edit_pattern_name').value = name;
-            document.getElementById('edit_regex_pattern').value = pattern;
-            document.getElementById('edit_description').value = description;
-        });
-    });
-
-    // Delete Ingredient Pattern Modal
-    document.querySelectorAll('[data-bs-target="#deleteIngredientPatternModal"]').forEach(function(button) {
-        button.addEventListener('click', function() {
-            const id = this.getAttribute('data-id');
-            const name = this.getAttribute('data-name');
-
-            document.getElementById('delete_ingredient_pattern_id').value = id;
-            document.getElementById('delete_ingredient_pattern_name').textContent = name;
-        });
-    });
-
-    // Edit Recipe Section Modal
-    document.querySelectorAll('[data-bs-target="#editRecipeSectionModal"]').forEach(function(button) {
-        button.addEventListener('click', function() {
-            const id = this.getAttribute('data-id');
-            const header = this.getAttribute('data-header');
-            const order = this.getAttribute('data-order');
-
-            document.getElementById('edit_recipe_section_id').value = id;
-            document.getElementById('edit_recipe_header_text').value = header;
-            document.getElementById('edit_recipe_display_order').value = order;
-        });
-    });
-
-    // Delete Recipe Section Modal
-    document.querySelectorAll('[data-bs-target="#deleteRecipeSectionModal"]').forEach(function(button) {
-        button.addEventListener('click', function() {
-            const id = this.getAttribute('data-id');
-            const header = this.getAttribute('data-header');
-
-            document.getElementById('delete_recipe_section_id').value = id;
-            document.getElementById('delete_recipe_section_name').textContent = header;
-        });
-    });
-
-    // Edit Recipe Pattern Modal
-    document.querySelectorAll('[data-bs-target="#editRecipePatternModal"]').forEach(function(button) {
-        button.addEventListener('click', function() {
-            const id = this.getAttribute('data-id');
-            const name = this.getAttribute('data-name');
-            const pattern = this.getAttribute('data-pattern');
-            const color = this.getAttribute('data-color');
-            const bold = this.getAttribute('data-bold') === '1';
-            const description = this.getAttribute('data-description');
-
-            document.getElementById('edit_recipe_pattern_id').value = id;
-            document.getElementById('edit_recipe_pattern_name').value = name;
-            document.getElementById('edit_recipe_regex_pattern').value = pattern;
-            document.getElementById('edit_highlight_color').value = color;
-            document.getElementById('edit_bold').checked = bold;
-            document.getElementById('edit_recipe_description').value = description;
-        });
-    });
-
-    // Delete Recipe Pattern Modal
-    document.querySelectorAll('[data-bs-target="#deleteRecipePatternModal"]').forEach(function(button) {
-        button.addEventListener('click', function() {
-            const id = this.getAttribute('data-id');
-            const name = this.getAttribute('data-name');
-
-            document.getElementById('delete_recipe_pattern_id').value = id;
-            document.getElementById('delete_recipe_pattern_name').textContent = name;
-        });
-    });
-
-    // Automatically close alerts after 5 seconds
-    window.addEventListener('DOMContentLoaded', function() {
-        setTimeout(function() {
-            var alerts = document.querySelectorAll('.alert');
-            alerts.forEach(function(alert) {
-                var bsAlert = new bootstrap.Alert(alert);
-                bsAlert.close();
-            });
-        }, 5000);
-    });
-</script>
-</body>
-</html>
+<?php
+// Include footer
+include 'includes/footer.php';
+?>

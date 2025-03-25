@@ -1,0 +1,15 @@
+User ID: 5
+Query: SELECT n.notification_id, n.type, n.title, n.message, n.is_read, n.created_at FROM notifications n WHERE n.user_id = 5   ORDER BY n.created_at DESC LIMIT 0, 10
+Result count: 7
+User ID: 5
+Query: SELECT n.notification_id, n.type, n.title, n.message, n.is_read, n.created_at FROM notifications n WHERE n.user_id = 5   ORDER BY n.created_at DESC LIMIT 0, 10
+Result count: 7
+User ID: 5
+Query: SELECT n.notification_id, n.type, n.title, n.message, n.is_read, n.created_at FROM notifications n WHERE n.user_id = 5   ORDER BY n.created_at DESC LIMIT 0, 10
+Result count: 7
+User ID: 5
+Query: SELECT n.notification_id, n.type, n.title, n.message, n.is_read, n.created_at FROM notifications n WHERE n.user_id = 5   ORDER BY n.created_at DESC LIMIT 0, 10
+Result count: 7
+User ID: 5
+Query: SELECT n.notification_id, n.type, n.title, n.message, n.is_read, n.created_at FROM notifications n WHERE n.user_id = 5   ORDER BY n.created_at DESC LIMIT 0, 10
+Result count: 7

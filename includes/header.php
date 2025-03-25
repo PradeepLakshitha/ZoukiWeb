@@ -737,6 +737,7 @@
         <?php echo $additional_css; ?>
         <?php endif; ?>
     </style>
+<link rel="stylesheet" href="css/dashboard-enhanced.css">
 </head>
 <body>
 <!-- Overlay for mobile sidebar -->

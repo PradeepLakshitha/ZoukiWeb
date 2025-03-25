@@ -9,6 +9,17 @@ if (!isset($_GET['id']) || empty($_GET['id'])) {
     exit();
 }
 
+// Get user profile photo
+$userPhotoQuery = $conn->prepare("SELECT profile_photo FROM z_user WHERE username = ?");
+if (!$userPhotoQuery) {
+    error_log("User photo query prepare failed: " . $conn->error);
+} else {
+    $userPhotoQuery->bind_param("s", $userName);
+    $userPhotoQuery->execute();
+    $userPhotoResult = $userPhotoQuery->get_result();
+    $userPhoto = $userPhotoResult ? $userPhotoResult->fetch_assoc()['profile_photo'] ?? null : null;
+}
+
 $product_id = (int)$_GET['id'];
 
 // Get the product information with its categories and groups

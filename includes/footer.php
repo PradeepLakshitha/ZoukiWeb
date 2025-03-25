@@ -252,6 +252,6 @@
         <?php echo $page_scripts; ?>
     </script>
 <?php endif; ?>
-
+<script src="js/dashboard-enhanced.js"></script>
 </body>
 </html>

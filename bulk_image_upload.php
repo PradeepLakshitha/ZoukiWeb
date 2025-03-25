@@ -2,6 +2,36 @@
 require_once 'session_check.php';
 check_session(['Admin', 'Manager']);
 include 'db_connection.php';
+include 'includes/functions.php';
+
+// Page-specific variables
+$page_title = 'Bulk Image Upload';
+$active_page = 'settings';
+
+// Get the logged-in user's information
+$userName = $_SESSION['username'];
+$userType = $_SESSION['uType'];
+$userId = $_SESSION['userID'] ?? 0;
+
+// Get user details
+$userDetails = getUserDetails($conn, $userName);
+
+// Get user profile photo
+$userPhotoQuery = $conn->prepare("SELECT profile_photo FROM z_user WHERE username = ?");
+if (!$userPhotoQuery) {
+    error_log("User photo query prepare failed: " . $conn->error);
+} else {
+    $userPhotoQuery->bind_param("s", $userName);
+    $userPhotoQuery->execute();
+    $userPhotoResult = $userPhotoQuery->get_result();
+    $userPhoto = $userPhotoResult ? $userPhotoResult->fetch_assoc()['profile_photo'] ?? null : null;
+}
+
+// Get unread notification count
+$unreadCount = getUnreadNotificationCount($conn, $userId);
+
+// Get recent notifications
+$notificationsResult = getRecentNotifications($conn, $userId);
 
 // Ensure only Admin & Manager can access
 if (!isset($_SESSION['username']) || ($_SESSION['uType'] !== 'Admin' && $_SESSION['uType'] !== 'Manager')) {
@@ -15,9 +45,6 @@ $successMessage = '';
 $errorMessage = '';
 $uploadedFiles = [];
 $errorFiles = [];
-
-// Set active tab for navigation
-$activeTab = 'settings';
 
 // Create uploads directory if it doesn't exist
 $upload_dir = "uploads/";
@@ -324,607 +351,541 @@ if (isset($_SESSION['error'])) {
     $errorMessage = $_SESSION['error'];
     unset($_SESSION['error']);
 }
+
+// Define page-specific CSS
+$additional_css = '
+/* File Upload Styles */
+.file-upload {
+    border: 2px dashed #e0e0e0;
+    border-radius: 12px;
+    padding: 30px;
+    text-align: center;
+    position: relative;
+    transition: all 0.3s ease;
+    background: #f8f9fa;
+    margin-bottom: 20px;
+}
+
+.file-upload.dragover {
+    border-color: var(--primary-color);
+    background: #f0f0f0;
+}
+
+.file-upload i {
+    font-size: 3rem;
+    color: #adb5bd;
+    margin-bottom: 15px;
+}
+
+.file-upload-input {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    opacity: 0;
+    cursor: pointer;
+}
+
+.selected-files {
+    margin-top: 10px;
+    font-size: 0.875rem;
+    color: #495057;
+}
+
+/* Image Gallery */
+.image-gallery {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 15px;
+    margin-top: 20px;
+}
+
+.image-item {
+    position: relative;
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    transition: all 0.3s ease;
+    aspect-ratio: 1/1;
+}
+
+.image-item:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+}
+
+.image-item img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.image-info {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: rgba(0,0,0,0.7);
+    color: white;
+    padding: 5px 10px;
+    font-size: 0.75rem;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+.image-item:hover .image-info {
+    opacity: 1;
+}
+
+.copy-path {
+    position: absolute;
+    top: 5px;
+    right: 5px;
+    background: rgba(255,255,255,0.8);
+    color: #333;
+    border: none;
+    border-radius: 50%;
+    width: 25px;
+    height: 25px;
+    font-size: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+.image-item:hover .copy-path {
+    opacity: 1;
+}
+
+.image-actions {
+    position: absolute;
+    bottom: 5px;
+    right: 5px;
+    display: flex;
+    gap: 5px;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+.image-item:hover .image-actions {
+    opacity: 1;
+}
+
+.btn-delete {
+    background: rgba(255,255,255,0.8);
+    color: #333;
+    border: none;
+    border-radius: 50%;
+    width: 25px;
+    height: 25px;
+    font-size: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.btn-delete:hover {
+    background: rgba(220, 53, 69, 0.8);
+    color: white;
+}
+
+/* Progress Bar */
+.progress {
+    height: 10px;
+    border-radius: 5px;
+    margin-top: 20px;
+}
+
+/* Uploaded Files Table */
+.uploaded-files-table {
+    margin-top: 20px;
+}
+
+/* Error Files List */
+.error-files-list {
+    margin-top: 20px;
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+@media (max-width: 768px) {
+    .image-gallery {
+        grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+    }
+}
+';
+
+// Define page-specific scripts
+$page_scripts = '
+// File Upload Handling
+const fileInput = document.getElementById("imageInput");
+const fileUploadArea = document.getElementById("fileUploadArea");
+const selectedFiles = document.getElementById("selectedFiles");
+const fileList = document.getElementById("fileList");
+const uploadButton = document.getElementById("uploadButton");
+const uploadProgress = document.getElementById("uploadProgress");
+const progressBar = uploadProgress.querySelector(".progress-bar");
+
+// Delete image modal handling
+let currentImageToDelete = null;
+
+// Expose the showDeleteModal function to the global scope so onclick attributes can use it
+window.showDeleteModal = function(imagePath) {
+    // Store the image path
+    currentImageToDelete = imagePath;
+
+    // Show the modal
+    const deleteModal = new bootstrap.Modal(document.getElementById("deleteImageModal"));
+    deleteModal.show();
+};
+
+// Setup delete confirmation
+document.addEventListener("DOMContentLoaded", function() {
+    const confirmDeleteBtn = document.getElementById("confirmDeleteBtn");
+    if (confirmDeleteBtn) {
+        confirmDeleteBtn.addEventListener("click", function() {
+            if (currentImageToDelete) {
+                // Create a direct form submission
+                const form = document.createElement("form");
+                form.method = "POST";
+                form.style.display = "none";
+
+                const actionInput = document.createElement("input");
+                actionInput.type = "hidden";
+                actionInput.name = "action";
+                actionInput.value = "delete";
+
+                const imageInput = document.createElement("input");
+                imageInput.type = "hidden";
+                imageInput.name = "image";
+                imageInput.value = currentImageToDelete;
+
+                form.appendChild(actionInput);
+                form.appendChild(imageInput);
+                document.body.appendChild(form);
+
+                // Submit the form
+                form.submit();
+            }
+        });
+    }
+});
+
+// Handle file selection
+fileInput.addEventListener("change", function(e) {
+    const files = e.target.files;
+    if (files.length > 0) {
+        selectedFiles.classList.remove("d-none");
+        uploadButton.disabled = false;
+
+        // Clear previous list
+        fileList.innerHTML = "";
+
+        // Check each file
+        let validFiles = true;
+
+        for (let i = 0; i < files.length; i++) {
+            const file = files[i];
+            const fileSize = (file.size / 1024).toFixed(2); // Size in KB
+
+            // Validate file type
+            if (!file.type.match("image.*")) {
+                const li = document.createElement("li");
+                li.innerHTML = `<strong class="text-danger">${file.name}</strong> (${fileSize} KB) - Invalid file type`;
+                fileList.appendChild(li);
+                validFiles = false;
+            } else if (file.size > 5 * 1024 * 1024) { // 5MB limit
+                const li = document.createElement("li");
+                li.innerHTML = `<strong class="text-danger">${file.name}</strong> (${fileSize} KB) - File too large (max 5MB)`;
+                fileList.appendChild(li);
+                validFiles = false;
+            } else {
+                const li = document.createElement("li");
+                li.innerHTML = `<strong>${file.name}</strong> (${fileSize} KB)`;
+                fileList.appendChild(li);
+            }
+        }
+
+        uploadButton.disabled = !validFiles;
+    } else {
+        selectedFiles.classList.add("d-none");
+        uploadButton.disabled = true;
+    }
+});
+
+// Drag and drop functionality
+["dragenter", "dragover", "dragleave", "drop"].forEach(eventName => {
+    fileUploadArea.addEventListener(eventName, preventDefaults, false);
+});
+
+function preventDefaults(e) {
+    e.preventDefault();
+    e.stopPropagation();
+}
+
+["dragenter", "dragover"].forEach(eventName => {
+    fileUploadArea.addEventListener(eventName, highlight, false);
+});
+
+["dragleave", "drop"].forEach(eventName => {
+    fileUploadArea.addEventListener(eventName, unhighlight, false);
+});
+
+function highlight() {
+    fileUploadArea.classList.add("dragover");
+}
+
+function unhighlight() {
+    fileUploadArea.classList.remove("dragover");
+}
+
+fileUploadArea.addEventListener("drop", handleDrop, false);
+
+function handleDrop(e) {
+    const dt = e.dataTransfer;
+    const files = dt.files;
+    fileInput.files = files;
+
+    // Trigger change event
+    const event = new Event("change");
+    fileInput.dispatchEvent(event);
+}
+
+// Form submission and progress simulation (for upload only)
+document.querySelector("form[action=\'\']").addEventListener("submit", function() {
+    if (fileInput.files.length > 0) {
+        uploadProgress.classList.remove("d-none");
+        uploadButton.disabled = true;
+
+        // Simulate progress (in a real implementation, you\'d use XHR to track actual upload progress)
+        let progress = 0;
+        const interval = setInterval(function() {
+            progress += 5;
+            progressBar.style.width = progress + "%";
+            progressBar.setAttribute("aria-valuenow", progress);
+
+            if (progress >= 100) {
+                clearInterval(interval);
+            }
+        }, 100);
+    }
+});
+
+// Copy path functionality
+document.querySelectorAll(".copy-btn, .copy-path").forEach(button => {
+    button.addEventListener("click", function(e) {
+        e.stopPropagation(); // Prevent event from bubbling up
+        const path = this.getAttribute("data-path");
+        navigator.clipboard.writeText(path).then(() => {
+            const toast = new bootstrap.Toast(document.getElementById("copyToast"));
+            toast.show();
+        });
+    });
+});
+';
+
+// Include header
+include 'includes/header.php';
 ?>
 
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Bulk Image Upload - ZOUKI</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.7.2/font/bootstrap-icons.css" rel="stylesheet">
-    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-    <style>
-        :root {
-            --primary-color: #4CAF50;
-            --secondary-color: #2196F3;
-            --background-color: #f8f9fa;
-            --sidebar-width: 250px;
-            --danger-color: #dc3545;
-            --warning-color: #ffc107;
-            --success-color: #28a745;
-            --card-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-
-        /* Base Styles */
-        body {
-            background-color: var(--background-color);
-            font-family: 'Inter', 'Segoe UI', sans-serif;
-            margin: 0;
-            padding: 0;
-            min-height: 100vh;
-        }
-
-        /* Sidebar Styles */
-        .sidebar {
-            width: var(--sidebar-width);
-            position: fixed;
-            top: 0;
-            left: 0;
-            height: 100vh;
-            background: #2c3e50;
-            padding-top: 60px;
-            z-index: 1000;
-            transition: all 0.3s ease;
-        }
-
-        .sidebar .nav-link {
-            color: rgba(255, 255, 255, 0.8);
-            padding: 12px 20px;
-            margin: 4px 15px;
-            border-radius: 8px;
-            transition: all 0.3s ease;
-            font-size: 0.95rem;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-
-        .sidebar .nav-link:hover,
-        .sidebar .nav-link.active {
-            background: rgba(255, 255, 255, 0.1);
-            color: white;
-            transform: translateX(5px);
-        }
-
-        .sidebar .nav-link i {
-            font-size: 1.1rem;
-        }
-
-        /* Top Navbar Styles */
-        .top-navbar {
-            position: fixed;
-            top: 0;
-            right: 0;
-            left: var(--sidebar-width);
-            height: 60px;
-            background: white;
-            box-shadow: var(--card-shadow);
-            z-index: 999;
-            padding: 0 20px;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            transition: all 0.3s ease;
-        }
-
-        .top-navbar .user-info {
-            display: flex;
-            align-items: center;
-            gap: 15px;
-        }
-
-        .top-navbar .user-info .user-name {
-            font-weight: 500;
-            color: #2c3e50;
-        }
-
-        /* Main Content Area */
-        .main-content {
-            margin-left: var(--sidebar-width);
-            padding: 80px 20px 20px;
-            min-height: 100vh;
-            transition: all 0.3s ease;
-        }
-
-        /* Card Styles */
-        .card {
-            border: none;
-            border-radius: 12px;
-            box-shadow: var(--card-shadow);
-            margin-bottom: 20px;
-            background: white;
-        }
-
-        .card-header {
-            background: white;
-            border-bottom: 1px solid rgba(0,0,0,0.08);
-            padding: 15px 20px;
-            border-radius: 12px 12px 0 0;
-        }
-
-        .card-body {
-            padding: 20px;
-        }
-
-        /* File Upload Styles */
-        .file-upload {
-            border: 2px dashed #e0e0e0;
-            border-radius: 12px;
-            padding: 30px;
-            text-align: center;
-            position: relative;
-            transition: all 0.3s ease;
-            background: #f8f9fa;
-            margin-bottom: 20px;
-        }
-
-        .file-upload.dragover {
-            border-color: var(--primary-color);
-            background: #f0f0f0;
-        }
-
-        .file-upload i {
-            font-size: 3rem;
-            color: #adb5bd;
-            margin-bottom: 15px;
-        }
-
-        .file-upload-input {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            opacity: 0;
-            cursor: pointer;
-        }
-
-        .selected-files {
-            margin-top: 10px;
-            font-size: 0.875rem;
-            color: #495057;
-        }
-
-        /* Button Styles */
-        .btn-primary {
-            background: var(--primary-color);
-            border-color: var(--primary-color);
-            padding: 10px 16px;
-            border-radius: 8px;
-            transition: all 0.3s ease;
-        }
-
-        .btn-primary:hover {
-            background: #43a047;
-            border-color: #43a047;
-            transform: translateY(-2px);
-            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
-        }
-
-        /* Image Gallery */
-        .image-gallery {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-            gap: 15px;
-            margin-top: 20px;
-        }
-
-        .image-item {
-            position: relative;
-            border-radius: 8px;
-            overflow: hidden;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            transition: all 0.3s ease;
-            aspect-ratio: 1/1;
-        }
-
-        .image-item:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
-        }
-
-        .image-item img {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-        }
-
-        .image-info {
-            position: absolute;
-            bottom: 0;
-            left: 0;
-            right: 0;
-            background: rgba(0,0,0,0.7);
-            color: white;
-            padding: 5px 10px;
-            font-size: 0.75rem;
-            opacity: 0;
-            transition: opacity 0.3s ease;
-        }
-
-        .image-item:hover .image-info {
-            opacity: 1;
-        }
-
-        .copy-path {
-            position: absolute;
-            top: 5px;
-            right: 5px;
-            background: rgba(255,255,255,0.8);
-            color: #333;
-            border: none;
-            border-radius: 50%;
-            width: 25px;
-            height: 25px;
-            font-size: 12px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            cursor: pointer;
-            opacity: 0;
-            transition: opacity 0.3s ease;
-        }
-
-        .image-item:hover .copy-path {
-            opacity: 1;
-        }
-
-        .image-actions {
-            position: absolute;
-            bottom: 5px;
-            right: 5px;
-            display: flex;
-            gap: 5px;
-            opacity: 0;
-            transition: opacity 0.3s ease;
-        }
-
-        .image-item:hover .image-actions {
-            opacity: 1;
-        }
-
-        .btn-delete {
-            background: rgba(255,255,255,0.8);
-            color: #333;
-            border: none;
-            border-radius: 50%;
-            width: 25px;
-            height: 25px;
-            font-size: 12px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            cursor: pointer;
-            transition: all 0.2s ease;
-        }
-
-        .btn-delete:hover {
-            background: rgba(220, 53, 69, 0.8);
-            color: white;
-        }
-
-        /* Progress Bar */
-        .progress {
-            height: 10px;
-            border-radius: 5px;
-            margin-top: 20px;
-        }
-
-        /* Uploaded Files Table */
-        .uploaded-files-table {
-            margin-top: 20px;
-        }
-
-        /* Error Files List */
-        .error-files-list {
-            margin-top: 20px;
-            max-height: 200px;
-            overflow-y: auto;
-        }
-
-        /* Responsive styles */
-        @media (max-width: 768px) {
-            .sidebar {
-                width: 60px;
-                padding-top: 50px;
-            }
-
-            .sidebar .nav-link span {
-                display: none;
-            }
-
-            .sidebar .nav-link {
-                padding: 12px;
-                margin: 4px 8px;
-                justify-content: center;
-            }
-
-            .top-navbar {
-                left: 60px;
-            }
-
-            .main-content {
-                margin-left: 60px;
-            }
-
-            .image-gallery {
-                grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
-            }
-        }
-    </style>
-</head>
-<body>
-<!-- Sidebar -->
-<nav class="sidebar">
-    <ul class="nav flex-column">
-        <li class="nav-item">
-            <a class="nav-link" href="dashboard.php">
-                <i class="bi bi-speedometer2"></i>
-                <span>Dashboard</span>
-            </a>
-        </li>
-        <li class="nav-item">
-            <a class="nav-link" href="products_management.php">
-                <i class="bi bi-box"></i>
-                <span>Products</span>
-            </a>
-        </li>
-        <li class="nav-item">
-            <a class="nav-link" href="categories_groups.php?tab=categories">
-                <i class="bi bi-tags"></i>
-                <span>Categories</span>
-            </a>
-        </li>
-        <li class="nav-item">
-            <a class="nav-link" href="categories_groups.php?tab=groups">
-                <i class="bi bi-collection"></i>
-                <span>Groups</span>
-            </a>
-        </li>
-        <li class="nav-item">
-            <a class="nav-link" href="users.php">
-                <i class="bi bi-people"></i>
-                <span>Users</span>
-            </a>
-        </li>
-        <li class="nav-item">
-            <a class="nav-link" href="reports.php">
-                <i class="bi bi-graph-up"></i>
-                <span>Reports</span>
-            </a>
-        </li>
-        <li class="nav-item">
-            <a class="nav-link active" href="settings.php">
-                <i class="bi bi-gear"></i>
-                <span>Settings</span>
-            </a>
-        </li>
-    </ul>
-</nav>
-
-<!-- Top Navbar -->
-<nav class="top-navbar">
-    <div class="d-flex align-items-center">
-        <h4 class="mb-0">Bulk Image Upload</h4>
-    </div>
-    <div class="user-info">
-        <span class="user-name"><?php echo htmlspecialchars($_SESSION['username']); ?></span>
-        <a href="logout.php" class="btn btn-outline-danger btn-sm">
-            <i class="bi bi-box-arrow-right"></i> Logout
-        </a>
-    </div>
-</nav>
-
 <!-- Main Content -->
-<div class="main-content">
-    <div class="container-fluid">
-        <?php if ($errorMessage): ?>
-            <div class="alert alert-danger alert-dismissible fade show" role="alert">
-                <?php echo htmlspecialchars($errorMessage); ?>
-                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-            </div>
-        <?php endif; ?>
+<div class="container-fluid">
+    <div class="alert alert-info alert-dismissible fade show" role="alert">
+        <i class="bi bi-info-circle me-2"></i> <strong>Tip:</strong> You can upload multiple images at once, and delete images by hovering over them and clicking the trash icon.
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    </div>
 
-        <?php if ($successMessage): ?>
-            <div class="alert alert-success alert-dismissible fade show" role="alert">
-                <?php echo htmlspecialchars($successMessage); ?>
-                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-            </div>
-        <?php endif; ?>
+    <div class="row">
+        <!-- Upload Section -->
+        <div class="col-lg-6">
+            <div class="app-card">
+                <div class="app-card-header">
+                    <h5 class="app-card-title">Upload Images</h5>
+                </div>
+                <div class="app-card-body">
+                    <p class="text-muted mb-4">
+                        Upload multiple product images at once. These images can then be used when adding or updating products.
+                    </p>
 
-        <div class="alert alert-info alert-dismissible fade show" role="alert">
-            <i class="bi bi-info-circle me-2"></i> <strong>Tip:</strong> You can upload multiple images at once, and delete images by hovering over them and clicking the trash icon.
-            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-        </div>
+                    <form method="POST" enctype="multipart/form-data">
+                        <input type="hidden" name="action" value="upload">
 
-        <div class="row">
-            <!-- Upload Section -->
-            <div class="col-lg-6">
-                <div class="card">
-                    <div class="card-header">
-                        <h5 class="mb-0">Upload Images</h5>
-                    </div>
-                    <div class="card-body">
-                        <p class="text-muted mb-4">
-                            Upload multiple product images at once. These images can then be used when adding or updating products.
-                        </p>
+                        <div class="file-upload" id="fileUploadArea">
+                            <i class="bi bi-cloud-arrow-up"></i>
+                            <h5>Drag & Drop Images</h5>
+                            <p class="text-muted">or click to browse files</p>
+                            <input type="file" name="images[]" id="imageInput" class="file-upload-input" accept="image/*" multiple>
+                        </div>
 
-                        <form method="POST" enctype="multipart/form-data">
-                            <input type="hidden" name="action" value="upload">
+                        <div id="selectedFiles" class="selected-files d-none">
+                            <strong>Selected files:</strong>
+                            <ul id="fileList" class="list-unstyled"></ul>
+                        </div>
 
-                            <div class="file-upload" id="fileUploadArea">
-                                <i class="bi bi-cloud-arrow-up"></i>
-                                <h5>Drag & Drop Images</h5>
-                                <p class="text-muted">or click to browse files</p>
-                                <input type="file" name="images[]" id="imageInput" class="file-upload-input" accept="image/*" multiple>
-                            </div>
+                        <div class="progress d-none" id="uploadProgress">
+                            <div class="progress-bar bg-success" role="progressbar" style="width: 0%" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
+                        </div>
 
-                            <div id="selectedFiles" class="selected-files d-none">
-                                <strong>Selected files:</strong>
-                                <ul id="fileList" class="list-unstyled"></ul>
-                            </div>
+                        <div class="mt-3">
+                            <button type="submit" class="btn btn-primary w-100" id="uploadButton" disabled>
+                                <i class="bi bi-upload"></i> Upload Images
+                            </button>
+                        </div>
+                    </form>
 
-                            <div class="progress d-none" id="uploadProgress">
-                                <div class="progress-bar bg-success" role="progressbar" style="width: 0%" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
-                            </div>
-
-                            <div class="mt-3">
-                                <button type="submit" class="btn btn-primary w-100" id="uploadButton" disabled>
-                                    <i class="bi bi-upload"></i> Upload Images
-                                </button>
-                            </div>
-                        </form>
-
-                        <?php if (count($uploadedFiles) > 0): ?>
-                            <div class="uploaded-files-table mt-4">
-                                <h6>Successfully Uploaded Files</h6>
-                                <div class="table-responsive">
-                                    <table class="table table-sm table-striped">
-                                        <thead>
+                    <?php if (count($uploadedFiles) > 0): ?>
+                        <div class="uploaded-files-table mt-4">
+                            <h6>Successfully Uploaded Files</h6>
+                            <div class="table-responsive">
+                                <table class="table table-sm table-striped">
+                                    <thead>
+                                    <tr>
+                                        <th>Original Name</th>
+                                        <th>New Name</th>
+                                        <th>Size</th>
+                                        <th>Path</th>
+                                    </tr>
+                                    </thead>
+                                    <tbody>
+                                    <?php foreach ($uploadedFiles as $file): ?>
                                         <tr>
-                                            <th>Original Name</th>
-                                            <th>New Name</th>
-                                            <th>Size</th>
-                                            <th>Path</th>
+                                            <td><?php echo htmlspecialchars($file['original_name']); ?></td>
+                                            <td><?php echo htmlspecialchars($file['new_name']); ?></td>
+                                            <td><?php echo htmlspecialchars($file['size']); ?></td>
+                                            <td>
+                                                <code class="small"><?php echo htmlspecialchars($file['path']); ?></code>
+                                                <button class="btn btn-sm btn-outline-secondary ms-2 copy-btn" data-path="<?php echo htmlspecialchars($file['path']); ?>">
+                                                    <i class="bi bi-clipboard"></i>
+                                                </button>
+                                            </td>
                                         </tr>
-                                        </thead>
-                                        <tbody>
-                                        <?php foreach ($uploadedFiles as $file): ?>
-                                            <tr>
-                                                <td><?php echo htmlspecialchars($file['original_name']); ?></td>
-                                                <td><?php echo htmlspecialchars($file['new_name']); ?></td>
-                                                <td><?php echo htmlspecialchars($file['size']); ?></td>
-                                                <td>
-                                                    <code class="small"><?php echo htmlspecialchars($file['path']); ?></code>
-                                                    <button class="btn btn-sm btn-outline-secondary ms-2 copy-btn" data-path="<?php echo htmlspecialchars($file['path']); ?>">
-                                                        <i class="bi bi-clipboard"></i>
-                                                    </button>
-                                                </td>
-                                            </tr>
-                                        <?php endforeach; ?>
-                                        </tbody>
-                                    </table>
-                                </div>
+                                    <?php endforeach; ?>
+                                    </tbody>
+                                </table>
                             </div>
-                        <?php endif; ?>
+                        </div>
+                    <?php endif; ?>
 
-                        <?php if (count($errorFiles) > 0): ?>
-                            <div class="error-files-list mt-4">
-                                <h6>Files with Errors</h6>
-                                <div class="table-responsive">
-                                    <table class="table table-sm table-striped">
-                                        <thead>
+                    <?php if (count($errorFiles) > 0): ?>
+                        <div class="error-files-list mt-4">
+                            <h6>Files with Errors</h6>
+                            <div class="table-responsive">
+                                <table class="table table-sm table-striped">
+                                    <thead>
+                                    <tr>
+                                        <th>File Name</th>
+                                        <th>Error</th>
+                                    </tr>
+                                    </thead>
+                                    <tbody>
+                                    <?php foreach ($errorFiles as $file): ?>
                                         <tr>
-                                            <th>File Name</th>
-                                            <th>Error</th>
+                                            <td><?php echo htmlspecialchars($file['name']); ?></td>
+                                            <td class="text-danger"><?php echo htmlspecialchars($file['error']); ?></td>
                                         </tr>
-                                        </thead>
-                                        <tbody>
-                                        <?php foreach ($errorFiles as $file): ?>
-                                            <tr>
-                                                <td><?php echo htmlspecialchars($file['name']); ?></td>
-                                                <td class="text-danger"><?php echo htmlspecialchars($file['error']); ?></td>
-                                            </tr>
-                                        <?php endforeach; ?>
-                                        </tbody>
-                                    </table>
-                                </div>
+                                    <?php endforeach; ?>
+                                    </tbody>
+                                </table>
                             </div>
-                        <?php endif; ?>
-                    </div>
+                        </div>
+                    <?php endif; ?>
                 </div>
             </div>
+        </div>
 
-            <!-- Gallery Section -->
-            <div class="col-lg-6">
-                <div class="card">
-                    <div class="card-header d-flex justify-content-between align-items-center">
-                        <h5 class="mb-0">Image Gallery</h5>
-                        <span class="badge bg-primary"><?php echo count($existingImages); ?> Images</span>
-                    </div>
-                    <div class="card-body">
-                        <?php if (count($existingImages) > 0): ?>
-                            <div class="image-gallery">
-                                <?php foreach ($existingImages as $image): ?>
-                                    <div class="image-item">
-                                        <img src="<?php echo htmlspecialchars($image['path']); ?>" alt="<?php echo htmlspecialchars($image['name']); ?>">
-                                        <div class="image-info">
-                                            <div><?php echo htmlspecialchars($image['name']); ?></div>
-                                            <div><?php echo htmlspecialchars($image['size']); ?></div>
-                                        </div>
-                                        <button class="copy-path" data-path="<?php echo htmlspecialchars($image['real_path']); ?>" title="Copy path">
-                                            <i class="bi bi-clipboard"></i>
-                                        </button>
-                                        <div class="image-actions">
-                                            <button type="button" class="btn-delete"
-                                                    onclick="showDeleteModal('<?php echo htmlspecialchars($image['real_path']); ?>')"
-                                                    title="Delete image">
-                                                <i class="bi bi-trash"></i>
-                                            </button>
-                                        </div>
+        <!-- Gallery Section -->
+        <div class="col-lg-6">
+            <div class="app-card">
+                <div class="app-card-header d-flex justify-content-between align-items-center">
+                    <h5 class="app-card-title">Image Gallery</h5>
+                    <span class="badge bg-primary"><?php echo count($existingImages); ?> Images</span>
+                </div>
+                <div class="app-card-body">
+                    <?php if (count($existingImages) > 0): ?>
+                        <div class="image-gallery">
+                            <?php foreach ($existingImages as $image): ?>
+                                <div class="image-item">
+                                    <img src="<?php echo htmlspecialchars($image['path']); ?>" alt="<?php echo htmlspecialchars($image['name']); ?>">
+                                    <div class="image-info">
+                                        <div><?php echo htmlspecialchars($image['name']); ?></div>
+                                        <div><?php echo htmlspecialchars($image['size']); ?></div>
                                     </div>
-                                <?php endforeach; ?>
-                            </div>
-                        <?php else: ?>
-                            <div class="text-center py-5">
-                                <i class="bi bi-images" style="font-size: 3rem; color: #adb5bd;"></i>
-                                <h5 class="mt-3">No Images Found</h5>
-                                <p class="text-muted">Upload some images to see them here.</p>
-                            </div>
-                        <?php endif; ?>
-                    </div>
+                                    <button class="copy-path" data-path="<?php echo htmlspecialchars($image['real_path']); ?>" title="Copy path">
+                                        <i class="bi bi-clipboard"></i>
+                                    </button>
+                                    <div class="image-actions">
+                                        <button type="button" class="btn-delete"
+                                                onclick="showDeleteModal('<?php echo htmlspecialchars($image['real_path']); ?>')"
+                                                title="Delete image">
+                                            <i class="bi bi-trash"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                            <?php endforeach; ?>
+                        </div>
+                    <?php else: ?>
+                        <div class="text-center py-5">
+                            <i class="bi bi-images" style="font-size: 3rem; color: #adb5bd;"></i>
+                            <h5 class="mt-3">No Images Found</h5>
+                            <p class="text-muted">Upload some images to see them here.</p>
+                        </div>
+                    <?php endif; ?>
                 </div>
             </div>
         </div>
+    </div>
 
-        <!-- Upload Instructions -->
-        <div class="card mt-4">
-            <div class="card-header">
-                <h5 class="mb-0">Upload Instructions</h5>
-            </div>
-            <div class="card-body">
-                <div class="row">
-                    <div class="col-md-6">
-                        <h6>Supported File Types</h6>
-                        <p>The following image formats are supported:</p>
-                        <ul>
-                            <li>JPEG/JPG</li>
-                            <li>PNG</li>
-                            <li>GIF</li>
-                        </ul>
+    <!-- Upload Instructions -->
+    <div class="app-card mt-4">
+        <div class="app-card-header">
+            <h5 class="app-card-title">Upload Instructions</h5>
+        </div>
+        <div class="app-card-body">
+            <div class="row">
+                <div class="col-md-6">
+                    <h6>Supported File Types</h6>
+                    <p>The following image formats are supported:</p>
+                    <ul>
+                        <li>JPEG/JPG</li>
+                        <li>PNG</li>
+                        <li>GIF</li>
+                    </ul>
 
-                        <h6>File Size Limits</h6>
-                        <p>Maximum file size: <strong>5MB</strong> per image</p>
+                    <h6>File Size Limits</h6>
+                    <p>Maximum file size: <strong>5MB</strong> per image</p>
 
-                        <h6>Image Processing</h6>
-                        <p>All uploaded images are automatically:</p>
-                        <ul>
-                            <li>Resized to standard product dimensions (max 800×800px)</li>
-                            <li>Optimized for web display</li>
-                            <li>Given product-friendly filenames</li>
-                            <li>Processed with thumbnails for gallery view</li>
-                        </ul>
-                    </div>
+                    <h6>Image Processing</h6>
+                    <p>All uploaded images are automatically:</p>
+                    <ul>
+                        <li>Resized to standard product dimensions (max 800×800px)</li>
+                        <li>Optimized for web display</li>
+                        <li>Given product-friendly filenames</li>
+                        <li>Processed with thumbnails for gallery view</li>
+                    </ul>
+                </div>
 
-                    <div class="col-md-6">
-                        <h6>Using Images in Products</h6>
-                        <p>After uploading, you can use these images when creating or editing products:</p>
-                        <ol>
-                            <li>Copy the image path by hovering over an image and clicking the clipboard icon</li>
-                            <li>When adding/editing a product, paste this path in the image field</li>
-                            <li>Alternatively, use the image filename in your CSV imports in the image_path column</li>
-                        </ol>
+                <div class="col-md-6">
+                    <h6>Using Images in Products</h6>
+                    <p>After uploading, you can use these images when creating or editing products:</p>
+                    <ol>
+                        <li>Copy the image path by hovering over an image and clicking the clipboard icon</li>
+                        <li>When adding/editing a product, paste this path in the image field</li>
+                        <li>Alternatively, use the image filename in your CSV imports in the image_path column</li>
+                    </ol>
 
-                        <h6>Image Organization</h6>
-                        <p>Images are organized as follows:</p>
-                        <ul>
-                            <li>Main product images: <code>uploads/ActualImageName_DD-MM-YYYY.extension</code></li>
-                            <li>Thumbnails: <code>uploads/thumbnails/ActualImageName_DD-MM-YYYY.extension</code></li>
-                        </ul>
-                        <p>This format matches exactly what the product management system expects.</p>
-                    </div>
+                    <h6>Image Organization</h6>
+                    <p>Images are organized as follows:</p>
+                    <ul>
+                        <li>Main product images: <code>uploads/ActualImageName_DD-MM-YYYY.extension</code></li>
+                        <li>Thumbnails: <code>uploads/thumbnails/ActualImageName_DD-MM-YYYY.extension</code></li>
+                    </ul>
+                    <p>This format matches exactly what the product management system expects.</p>
                 </div>
             </div>
         </div>
@@ -943,203 +904,6 @@ if (isset($_SESSION['error'])) {
     </div>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
-<script>
-    // File Upload Handling
-    const fileInput = document.getElementById('imageInput');
-    const fileUploadArea = document.getElementById('fileUploadArea');
-    const selectedFiles = document.getElementById('selectedFiles');
-    const fileList = document.getElementById('fileList');
-    const uploadButton = document.getElementById('uploadButton');
-    const uploadProgress = document.getElementById('uploadProgress');
-    const progressBar = uploadProgress.querySelector('.progress-bar');
-
-    //-------delete------
-    // Wrap all our delete modal code in a DOMContentLoaded event listener
-    document.addEventListener('DOMContentLoaded', function() {
-        // Delete image modal handling
-        let currentImageToDelete = null;
-
-        // Expose the showDeleteModal function to the global scope so onclick attributes can use it
-        window.showDeleteModal = function(imagePath) {
-            // Store the image path
-            currentImageToDelete = imagePath;
-
-            // Show the modal
-            const deleteModal = new bootstrap.Modal(document.getElementById('deleteImageModal'));
-            deleteModal.show();
-
-            console.log("Modal opened for image:", imagePath);
-        };
-
-        // Make sure the button exists before attaching the event listener
-        const confirmDeleteBtn = document.getElementById('confirmDeleteBtn');
-        if (confirmDeleteBtn) {
-            confirmDeleteBtn.addEventListener('click', function() {
-                console.log("Confirm delete button clicked");
-
-                if (currentImageToDelete) {
-                    console.log("Submitting delete for:", currentImageToDelete);
-
-                    // Create a more direct form submission
-                    const form = document.createElement('form');
-                    form.method = 'POST';
-                    form.action = 'bulk_image_upload.php';
-                    form.style.display = 'none';
-
-                    const actionInput = document.createElement('input');
-                    actionInput.type = 'hidden';
-                    actionInput.name = 'action';
-                    actionInput.value = 'delete';
-
-                    const imageInput = document.createElement('input');
-                    imageInput.type = 'hidden';
-                    imageInput.name = 'image';
-                    imageInput.value = currentImageToDelete;
-
-                    form.appendChild(actionInput);
-                    form.appendChild(imageInput);
-                    document.body.appendChild(form);
-
-                    // Submit the form
-                    form.submit();
-                } else {
-                    console.error("No image selected for deletion");
-                }
-            });
-        } else {
-            console.error("Delete confirmation button not found in the DOM");
-        }
-    });
-    //-------delete------
-    // Handle file selection
-    fileInput.addEventListener('change', function(e) {
-        const files = e.target.files;
-        if (files.length > 0) {
-            selectedFiles.classList.remove('d-none');
-            uploadButton.disabled = false;
-
-            // Clear previous list
-            fileList.innerHTML = '';
-
-            // Check each file
-            let validFiles = true;
-
-            for (let i = 0; i < files.length; i++) {
-                const file = files[i];
-                const fileSize = (file.size / 1024).toFixed(2); // Size in KB
-
-                // Validate file type
-                if (!file.type.match('image.*')) {
-                    const li = document.createElement('li');
-                    li.innerHTML = `<strong class="text-danger">${file.name}</strong> (${fileSize} KB) - Invalid file type`;
-                    fileList.appendChild(li);
-                    validFiles = false;
-                } else if (file.size > 5 * 1024 * 1024) { // 5MB limit
-                    const li = document.createElement('li');
-                    li.innerHTML = `<strong class="text-danger">${file.name}</strong> (${fileSize} KB) - File too large (max 5MB)`;
-                    fileList.appendChild(li);
-                    validFiles = false;
-                } else {
-                    const li = document.createElement('li');
-                    li.innerHTML = `<strong>${file.name}</strong> (${fileSize} KB)`;
-                    fileList.appendChild(li);
-                }
-            }
-
-            uploadButton.disabled = !validFiles;
-        } else {
-            selectedFiles.classList.add('d-none');
-            uploadButton.disabled = true;
-        }
-    });
-
-    // Drag and drop functionality
-    ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
-        fileUploadArea.addEventListener(eventName, preventDefaults, false);
-    });
-
-    function preventDefaults(e) {
-        e.preventDefault();
-        e.stopPropagation();
-    }
-
-    ['dragenter', 'dragover'].forEach(eventName => {
-        fileUploadArea.addEventListener(eventName, highlight, false);
-    });
-
-    ['dragleave', 'drop'].forEach(eventName => {
-        fileUploadArea.addEventListener(eventName, unhighlight, false);
-    });
-
-    function highlight() {
-        fileUploadArea.classList.add('dragover');
-    }
-
-    function unhighlight() {
-        fileUploadArea.classList.remove('dragover');
-    }
-
-    fileUploadArea.addEventListener('drop', handleDrop, false);
-
-    function handleDrop(e) {
-        const dt = e.dataTransfer;
-        const files = dt.files;
-        fileInput.files = files;
-
-        // Trigger change event
-        const event = new Event('change');
-        fileInput.dispatchEvent(event);
-    }
-
-    // Form submission and progress simulation (for upload only)
-    document.querySelector('form[action=""]').addEventListener('submit', function() {
-        if (fileInput.files.length > 0) {
-            uploadProgress.classList.remove('d-none');
-            uploadButton.disabled = true;
-
-            // Simulate progress (in a real implementation, you'd use XHR to track actual upload progress)
-            let progress = 0;
-            const interval = setInterval(function() {
-                progress += 5;
-                progressBar.style.width = progress + '%';
-                progressBar.setAttribute('aria-valuenow', progress);
-
-                if (progress >= 100) {
-                    clearInterval(interval);
-                }
-            }, 100);
-        }
-    });
-
-    // Copy path functionality
-    document.querySelectorAll('.copy-btn, .copy-path').forEach(button => {
-        button.addEventListener('click', function(e) {
-            e.stopPropagation(); // Prevent event from bubbling up
-            const path = this.getAttribute('data-path');
-            navigator.clipboard.writeText(path).then(() => {
-                const toast = new bootstrap.Toast(document.getElementById('copyToast'));
-                toast.show();
-            });
-        });
-    });
-
-    // Responsive sidebar toggle
-    document.addEventListener('DOMContentLoaded', function() {
-        const mediaQuery = window.matchMedia('(max-width: 768px)');
-        function handleScreenChange(e) {
-            if (e.matches) {
-                document.querySelector('.sidebar').classList.add('collapsed');
-                document.querySelector('.main-content').classList.add('expanded');
-            } else {
-                document.querySelector('.sidebar').classList.remove('collapsed');
-                document.querySelector('.main-content').classList.remove('expanded');
-            }
-        }
-        mediaQuery.addListener(handleScreenChange);
-        handleScreenChange(mediaQuery);
-    });
-</script>
 <!-- Delete Image Modal -->
 <div class="modal fade" id="deleteImageModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
@@ -1164,5 +928,8 @@ if (isset($_SESSION['error'])) {
         </div>
     </div>
 </div>
-</body>
-</html>
+
+<?php
+// Include footer
+include 'includes/footer.php';
+?>
